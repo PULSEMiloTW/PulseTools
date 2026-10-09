@@ -10,6 +10,10 @@ function withModerationActions(builder: Pick<SlashCommandBuilder, 'addSubcommand
 }
 export const commands = [
   base('r2','雲端檔案上傳管理')
+    .addSubcommandGroup(g=>g.setName('access').setDescription('Owner 手動授權上傳者')
+      .addSubcommand(s=>s.setName('list').setDescription('列出此 Guild 上傳授權名單'))
+      .addSubcommand(s=>s.setName('add').setDescription('加入此 Guild 上傳者').addUserOption(o=>o.setName('user').setDescription('目前 Guild 的成員').setRequired(true)))
+      .addSubcommand(s=>s.setName('remove').setDescription('撤銷此 Guild 上傳者').addUserOption(o=>o.setName('user').setDescription('要撤銷的使用者').setRequired(true))))
     .addSubcommand(s=>s.setName('status').setDescription('此 Guild 的 R2 狀態'))
     .addSubcommand(s=>s.setName('test').setDescription('唯讀檢查指定 Bucket 連線'))
     .addSubcommand(s=>s.setName('files').setDescription('此 Guild 最近上傳請求'))
@@ -26,7 +30,7 @@ export const commands = [
       .addStringOption(o=>o.setName('types').setDescription('逗號分隔：png,jpg,webp,gif,pdf,mp4,mp3,zip'))
       .addStringOption(o=>o.setName('prefix').setDescription('Object 前綴：英數、底線、連字號').setMaxLength(40))
       .addBooleanOption(o=>o.setName('allow_delete').setDescription('僅永久公開連結可啟用刪除'))
-      .addBooleanOption(o=>o.setName('members').setDescription('是否允許成員提出上傳'))
+      .addBooleanOption(o=>o.setName('members').setDescription('是否允許授權名單成員提出上傳'))
       .addChannelOption(o=>o.setName('result_channel').setDescription('結果頻道；預設來源頻道').addChannelTypes(ChannelType.GuildText))),
   base('error', '安全錯誤中心')
     .addSubcommand((s) => s.setName('list').setDescription('查看最近十組安全錯誤').addBooleanOption((o) => o.setName('global').setDescription('Owner 全域診斷')))

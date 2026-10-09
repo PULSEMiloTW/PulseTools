@@ -1,10 +1,21 @@
 import { and, eq, inArray, lt, desc, sql } from 'drizzle-orm';
 import type { Database } from './connection.js';
-import { r2GuildSettings, r2UploadRequests, r2UploadedObjects, r2UploadEvents, auditEvents } from './schema.js';
+import { r2GuildSettings, r2UploadRequests, r2UploadedObjects, r2UploadEvents, auditEvents, r2UploadUsers, guilds, securityEvents } from './schema.js';
 import { r2SettingsSchema, type R2Settings, type R2State } from '../../shared/src/r2.js';
 import type { R2Store, R2Request, R2Object } from '../../core/src/r2-store.js';
 export class PostgresR2Store implements R2Store {
   constructor(private readonly db: Database) {}
+  async allowed(guildId:string,userId:string) { return (await this.db.select({userId:r2UploadUsers.userId}).from(r2UploadUsers).where(and(eq(r2UploadUsers.guildId,guildId),eq(r2UploadUsers.userId,userId)))).length>0; }
+  async accessList(guildId:string) { return (await this.db.select({userId:r2UploadUsers.userId}).from(r2UploadUsers).where(eq(r2UploadUsers.guildId,guildId)).orderBy(r2UploadUsers.createdAt)).map(row=>row.userId); }
+  async setAllowed(guildId:string,userId:string,enabled:boolean,ownerId:string) {
+    await this.db.transaction(async tx=> {
+      const [guild]=await tx.select({authorized:guilds.authorized}).from(guilds).where(eq(guilds.id,guildId)).for('share');
+      if(!guild?.authorized) throw new Error('R2_GUILD_DENIED');
+      if(enabled) await tx.insert(r2UploadUsers).values({guildId,userId,grantedBy:ownerId}).onConflictDoNothing();
+      else await tx.delete(r2UploadUsers).where(and(eq(r2UploadUsers.guildId,guildId),eq(r2UploadUsers.userId,userId)));
+      await tx.insert(securityEvents).values({guildId,actorId:ownerId,action:'r2.access.change',details:{userId,enabled},eventAt:new Date(),receivedAt:new Date(),processedAt:new Date(),timestampSource:'received'});
+    });
+  }
   async settings(guildId: string) { return r2SettingsSchema.parse((await this.db.select().from(r2GuildSettings).where(eq(r2GuildSettings.guildId,guildId)))[0]?.settings ?? {}); }
   async setSettings(guildId: string, settings: R2Settings) { await this.db.insert(r2GuildSettings).values({guildId,settings:r2SettingsSchema.parse(settings),updatedAt:new Date()}).onConflictDoUpdate({target:r2GuildSettings.guildId,set:{settings,updatedAt:new Date()}}); }
   async create(input: Pick<R2Request,'guildId'|'channelId'|'messageId'|'uploaderId'|'attachments'|'settings'>) {

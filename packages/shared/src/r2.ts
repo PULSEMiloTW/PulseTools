@@ -25,3 +25,5 @@ export function acceptedAttachment(file: R2Attachment, policy: R2Settings) {
   const canonical = ext === 'jpeg' ? 'jpg' : ext;
   return file.size <= policy.maxBytes && policy.allowedTypes.some(t=> t === canonical);
 }
+
+export function fileDisposition(contentType?:string) { return ['image/png','image/jpeg','image/webp','image/gif'].includes(contentType??'') ? 'inline' : 'attachment'; }

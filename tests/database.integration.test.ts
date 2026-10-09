@@ -442,3 +442,13 @@ it('R2 刪除確認可關聯先到／後到的實際 Audit 事件，不改原文
     const [record]=await db.select().from(schema.auditEvents).where(and(eq(schema.auditEvents.guildId,guildA),eq(schema.auditEvents.messageId,messageId)));expect(record?.uploadRequestId).toBe(r.id);
   }
 });
+
+it('R2 手動授權名單獨立持久化、原子去重及 Guild 隔離',async()=>{
+  const {PostgresR2Store}=await import('../packages/database/src/r2-repository.js');const store=new PostgresR2Store(db),userId='100000000000000099';
+  await core.guilds.setAuthorization(owner,guildA,'access A',true);await core.guilds.setAuthorization(owner,guildB,'access B',true);
+  expect(await store.allowed(guildA,userId)).toBe(false);
+  await Promise.all([store.setAllowed(guildA,userId,true,owner),store.setAllowed(guildA,userId,true,owner)]);
+  expect(await store.accessList(guildA)).toEqual([userId]);expect(await store.allowed(guildB,userId)).toBe(false);
+  await store.setAllowed(guildB,userId,true,owner);await store.setAllowed(guildA,userId,false,owner);expect(await store.allowed(guildA,userId)).toBe(false);expect(await store.allowed(guildB,userId)).toBe(true);
+  const rows=await db.execute<{relrowsecurity:boolean}>(sql`select relrowsecurity from pg_class where relnamespace=current_schema()::regnamespace and relname='r2_upload_users'`);expect(rows.rows[0]?.relrowsecurity).toBe(true);
+});

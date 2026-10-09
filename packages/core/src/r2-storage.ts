@@ -6,12 +6,12 @@ import { mkdtemp, rm, open } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { attachmentUrl, type R2Attachment, type R2Settings } from '../../shared/src/r2.js';
+import { attachmentUrl, fileDisposition, type R2Attachment, type R2Settings } from '../../shared/src/r2.js';
 import type { Environment } from '../../shared/src/environment.js';
 export interface R2Storage {
   configured: boolean; publicAvailable: boolean;
   upload(file:R2Attachment,url:string,key:string,settings:R2Settings):Promise<{contentType:string;size:number}>;
-  link(key:string,access:'private'|'public'):Promise<string>;
+  link(key:string,access:'private'|'public',contentType?:string):Promise<string>;
   test():Promise<void>;
 }
 export class R2StorageService implements R2Storage {
@@ -25,10 +25,10 @@ export class R2StorageService implements R2Storage {
     if(this.configured) this.client=new S3Client({region:'auto',endpoint:`https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,credentials:{accessKeyId:env.R2_ACCESS_KEY_ID!,secretAccessKey:env.R2_SECRET_ACCESS_KEY!},maxAttempts:1,requestChecksumCalculation:'WHEN_REQUIRED',responseChecksumValidation:'WHEN_REQUIRED'});
   }
   async test() { if(!this.client) throw new Error('R2_CONFIG_REQUIRED'); await this.client.send(new HeadBucketCommand({Bucket:this.env.R2_BUCKET_NAME}),{abortSignal:AbortSignal.timeout(10000)}); }
-  async link(key:string,access:'private'|'public') {
+  async link(key:string,access:'private'|'public',contentType?:string) {
     if(!this.client) throw new Error('R2_CONFIG_REQUIRED');
     if(access==='public') { if(!this.publicBase) throw new Error('R2_PUBLIC_REQUIRED'); return `${this.publicBase.toString().replace(/\/$/,'')}/${key.split('/').map(encodeURIComponent).join('/')}`; }
-    return getSignedUrl(this.client,new GetObjectCommand({Bucket:this.env.R2_BUCKET_NAME,Key:key,ResponseContentDisposition:'attachment'}),{expiresIn:3600});
+    return getSignedUrl(this.client,new GetObjectCommand({Bucket:this.env.R2_BUCKET_NAME,Key:key,ResponseContentDisposition:fileDisposition(contentType)}),{expiresIn:3600});
   }
   async upload(file:R2Attachment,url:string,key:string,settings:R2Settings) {
     if(!this.client) throw new Error('R2_CONFIG_REQUIRED');
@@ -48,7 +48,7 @@ export class R2StorageService implements R2Storage {
       const detected=await fileTypeFromFile(path),ext=file.name.split('.').pop()?.toLowerCase();
       if(!detected || !settings.allowedTypes.some(t=>t===detected.ext) || (ext==='jpeg'?'jpg':ext)!==detected.ext || (file.contentType && file.contentType.split(';')[0]!==detected.mime)) throw new Error('R2_TYPE_MISMATCH');
       const digest=hash.digest('hex'); const stream=createReadStream(path);
-      try { await this.client.send(new PutObjectCommand({Bucket:this.env.R2_BUCKET_NAME,Key:key,Body:stream,ContentLength:size,ContentType:detected.mime,ContentDisposition:'attachment',Metadata:{sha256:digest},IfNoneMatch:'*'}),{abortSignal:signal}); }
+      try { await this.client.send(new PutObjectCommand({Bucket:this.env.R2_BUCKET_NAME,Key:key,Body:stream,ContentLength:size,ContentType:detected.mime,ContentDisposition:fileDisposition(detected.mime),Metadata:{sha256:digest},IfNoneMatch:'*'}),{abortSignal:signal}); }
       finally {stream.destroy();}
       const head=await this.client.send(new HeadObjectCommand({Bucket:this.env.R2_BUCKET_NAME,Key:key}),{abortSignal:signal});
       if(head.ContentLength!==size || head.ContentType!==detected.mime || head.Metadata?.sha256!==digest) throw new Error('R2_VERIFY_FAILED');

@@ -18,6 +18,21 @@ export interface R2Transport {
 export class R2Service {
   private active = 0;
   constructor(readonly core:Core,readonly store:R2Store,readonly storage:R2Storage,readonly transport:R2Transport,private readonly onError:(guildId:string)=>Promise<void>) {}
+  async accessList(actor:Actor) {
+    this.core.permissions.requireOwner(actor.userId);
+    await this.core.permissions.requireGuild(actor.guildId);
+    return this.store.accessList(actor.guildId);
+  }
+  async setAccess(actor:Actor,userId:string,enabled:boolean) {
+    this.core.permissions.requireOwner(actor.userId);
+    await this.core.permissions.requireAdmin(actor,true);
+    if(!snowflake.safeParse(userId).success) throw new PulseError('INVALID_INPUT');
+    if(enabled) await this.transport.actor({guildId:actor.guildId,userId,nativeAdministrator:false});
+    await this.store.setAllowed(actor.guildId,userId,enabled,actor.userId);
+  }
+  private async requireAccess(guildId:string,userId:string) {
+    if(!await this.store.allowed(guildId,userId)) throw new PulseError('PERMISSION_DENIED');
+  }
   async ready(guildId:string,mutation=false) {
     await this.core.permissions.requireGuild(guildId);
     if(mutation && await this.core.repository.lockdown()) throw new PulseError('LOCKDOWN');
@@ -27,6 +42,7 @@ export class R2Service {
     z.object({guildId:snowflake,channelId:snowflake,messageId:snowflake,uploaderId:snowflake}).parse(input);
     await this.ready(input.guildId,true); const settings=await this.store.settings(input.guildId);
     if(!settings.channels.includes(input.channelId) || !settings.membersMayUpload || !input.attachments.length) return;
+    if(!await this.store.allowed(input.guildId,input.uploaderId)) return;
     const files=z.array(r2AttachmentSchema).max(settings.maxFiles).parse(input.attachments);
     if(files.some(f=>!acceptedAttachment(f,settings))) return;
     const request=await this.store.create({...input,attachments:files,settings}); if(!request) return;
@@ -36,6 +52,8 @@ export class R2Service {
   private async authorizeRequest(actor:Actor,request:R2Request) {
     await this.ready(actor.guildId,true);
     actor=await this.transport.actor(actor);
+    await this.requireAccess(actor.guildId,actor.userId);
+    await this.requireAccess(actor.guildId,request.uploaderId);
     if(actor.userId!==request.uploaderId) await this.core.permissions.requireAdmin(actor,true);
     const settings=await this.store.settings(actor.guildId);
     if(!settings.channels.includes(request.channelId) || !settings.membersMayUpload || settings.access!==request.settings.access || settings.resultChannelId!==request.settings.resultChannelId || request.attachments.length>settings.maxFiles || request.attachments.some(file=>!acceptedAttachment(file,settings))) throw new PulseError('PERMISSION_DENIED');
@@ -45,6 +63,8 @@ export class R2Service {
     await this.ready(actor.guildId,true); actor=await this.transport.actor(actor); if(!z.uuid().safeParse(id).success) throw new PulseError('INVALID_INPUT');
     const original=await this.store.get(actor.guildId,id);
     if(!original || original.channelId!==channelId || original.promptId!==promptId) throw new PulseError('INVALID_INPUT');
+    await this.requireAccess(actor.guildId,actor.userId);
+    await this.requireAccess(actor.guildId,original.uploaderId);
     if(actor.userId!==original.uploaderId) await this.core.permissions.requireAdmin(actor,true);
     const current=await this.store.settings(actor.guildId);
     if(!current.channels.includes(original.channelId) || !current.membersMayUpload || current.access!==original.settings.access) throw new PulseError('MODULE_UNAVAILABLE');
@@ -71,7 +91,7 @@ export class R2Service {
         try {
           const verified=await this.storage.upload(file,source.url,key,request.settings);
           await this.store.object({id:objectId,guildId:actor.guildId,requestId:id,attachmentId:file.id,filename:file.name,key,...verified,status:'Uploaded',uploadedAt:new Date()}); verifiedObject=true;
-          const url=await this.storage.link(key,request.settings.access);
+          const url=await this.storage.link(key,request.settings.access,verified.contentType);
           await this.transport.verifyLink(url); links.push({name:file.name,url});
         } catch {
           // 寫回或網路結果不明時不覆蓋既有 Object，也不自動重傳。

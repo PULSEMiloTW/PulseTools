@@ -29,3 +29,9 @@
 7. 真實失敗測試、公開模式替代訊息／刪除分支需另指定測試條件；目前私人模式不對真實 Discord 執行刪除。這些分支的 mock 通過不等於真實驗收。
 
 Phase 5 真實驗收完成前不進 Phase 6。公開模式、Unknown 人工對帳、Dashboard 介面及病毒掃描的限制詳見 R2_STORAGE.md。
+
+## Custom Domain 與手動上傳授權更新
+
+新增 Owner 專用 /r2 access add／remove／list，名單按 Guild 持久化且預設空白，原上傳者與操作人皆需目前授權；確認、每檔上傳及結果／刪除前重查撤銷。PNG／JPEG／WebP／GIF 改 inline，其他格式維持下載；私人圖片 URL 同樣可直接顯示。Custom Domain 仍需有效 R2_PUBLIC_BASE_URL 與明確 public 設定，不自行切換 Bucket 公開政策。訪客是否需登入及 Custom Domain 設定待使用者提供；不是用上傳名單冒充公開網址的下載授權。舊 Object metadata 未修改。
+
+本次更新驗證：Strict TypeScript、110 項離線測試、30 項隔離 PostgreSQL 測試及 build 通過；專用資料庫已套用 0009，doctor 通過，兩個測試 Guild 指令已更新。未代為啟停 Bot、加入任何使用者、修改 .env 或切換既有 Guild 存取模式。本機目前沒有有效 R2_PUBLIC_BASE_URL；Custom Domain 實際瀏覽與新名單按鈕驗收待使用者手動設定／重啟。

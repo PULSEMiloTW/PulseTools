@@ -12,7 +12,7 @@ let requests:R2Request[],objects:R2Object[],service:R2Service,transport:R2Transp
 beforeEach(async()=>{
   requests=[];objects=[];repository=new MemoryRepository();const core=createCore(repository,owner,true,true,true);await core.guilds.setAuthorization(owner,guild,'test',true);await core.modules.setEnabled({userId:owner,guildId:guild,nativeAdministrator:true},'PT-10',true);
   const settings=r2SettingsSchema.parse({channels:[channel]});
-  store={settings:vi.fn(async()=>settings),setSettings:vi.fn(),create:vi.fn(async(input)=>{if(requests.some(r=>r.messageId===input.messageId&&r.guildId===input.guildId))return;const r:R2Request={...input,id:randomUUID(),status:'Pending',choice:null,promptId:null,resultId:null,actorId:null,errorCode:null,createdAt:new Date(),expiresAt:new Date(Date.now()+300000),startedAt:null,completedAt:null,deletedAt:null};requests.push(r);return r;}),get:vi.fn(async(g,id)=>requests.find(r=>r.guildId===g&&r.id===id)),prompt:vi.fn(async(g,id,p)=>{const r=requests.find(r=>r.guildId===g&&r.id===id)!;r.promptId=p;}),claim:vi.fn(async(g,id,c,a)=>{const r=requests.find(r=>r.guildId===g&&r.id===id&&r.status==='Pending'&&r.expiresAt>new Date());if(r){r.status=c==='cancel'?'Cancelled':'Uploading';r.choice=c;r.actorId=a;return {...r};}}),state:vi.fn(async(g,id,s,e,result,deleted)=>{const r=requests.find(r=>r.guildId===g&&r.id===id)!;r.status=s;r.errorCode=e??r.errorCode;r.resultId=result??r.resultId;r.deletedAt=deleted??r.deletedAt;}),object:vi.fn(async(o)=>{const previous=objects.findIndex(x=>x.id===o.id);if(previous>=0)objects[previous]={...o,createdAt:new Date()};else objects.push({...o,createdAt:new Date()});}),objects:vi.fn(async(g,id)=>objects.filter(o=>o.guildId===g&&o.requestId===id)),files:vi.fn(async()=>requests),expire:vi.fn(async()=>[]),recover:vi.fn()};
+  store={allowed:vi.fn(async()=>true),accessList:vi.fn(async()=>[]),setAllowed:vi.fn(async()=>{}),settings:vi.fn(async()=>settings),setSettings:vi.fn(),create:vi.fn(async(input)=>{if(requests.some(r=>r.messageId===input.messageId&&r.guildId===input.guildId))return;const r:R2Request={...input,id:randomUUID(),status:'Pending',choice:null,promptId:null,resultId:null,actorId:null,errorCode:null,createdAt:new Date(),expiresAt:new Date(Date.now()+300000),startedAt:null,completedAt:null,deletedAt:null};requests.push(r);return r;}),get:vi.fn(async(g,id)=>requests.find(r=>r.guildId===g&&r.id===id)),prompt:vi.fn(async(g,id,p)=>{const r=requests.find(r=>r.guildId===g&&r.id===id)!;r.promptId=p;}),claim:vi.fn(async(g,id,c,a)=>{const r=requests.find(r=>r.guildId===g&&r.id===id&&r.status==='Pending'&&r.expiresAt>new Date());if(r){r.status=c==='cancel'?'Cancelled':'Uploading';r.choice=c;r.actorId=a;return {...r};}}),state:vi.fn(async(g,id,s,e,result,deleted)=>{const r=requests.find(r=>r.guildId===g&&r.id===id)!;r.status=s;r.errorCode=e??r.errorCode;r.resultId=result??r.resultId;r.deletedAt=deleted??r.deletedAt;}),object:vi.fn(async(o)=>{const previous=objects.findIndex(x=>x.id===o.id);if(previous>=0)objects[previous]={...o,createdAt:new Date()};else objects.push({...o,createdAt:new Date()});}),objects:vi.fn(async(g,id)=>objects.filter(o=>o.guildId===g&&o.requestId===id)),files:vi.fn(async()=>requests),expire:vi.fn(async()=>[]),recover:vi.fn()};
   transport={actor:vi.fn(async(a)=>a),prompt:vi.fn(async()=>prompt),fresh:vi.fn(async()=>({canDelete:true,files:[{...attachment,url:'https://cdn.discordapp.com/attachments/a/b/test.png'}]})),result:vi.fn(async()=>message),deleteOriginal:vi.fn(async()=>{}),disable:vi.fn(async()=>{}),verifyLink:vi.fn(async()=>{})};
   storage={configured:true,publicAvailable:true,upload:vi.fn(async()=>({contentType:'image/png',size:100})),link:vi.fn(async()=> 'https://files.example.test/file'),test:vi.fn()};service=new R2Service(core,store,storage,transport,vi.fn());
 });
@@ -76,4 +76,24 @@ it('刪除 API 失敗保留已驗證檔案與替代訊息，沒有重試',async(
 it('過期請求停用按鈕，即使 UI 編輯失敗仍不開放重傳',async()=>{
   const r=await offer();r.status='Expired';vi.mocked(store.expire).mockResolvedValue([r]);vi.mocked(transport.disable).mockRejectedValue(new Error('missing'));
   await service.expire();expect(r.promptId).toBeNull();expect(storage.upload).not.toHaveBeenCalled();
+});
+
+it('未在手動名單的人不產生詢問，Owner 亦無隱含上傳權限',async()=>{
+  vi.mocked(store.allowed).mockResolvedValue(false);
+  await offer();expect(requests).toHaveLength(0);expect(transport.prompt).not.toHaveBeenCalled();expect(storage.upload).not.toHaveBeenCalled();
+});
+it('只有 Owner 可管理名單，Guild Admin 無法自行加入或查看名單',async()=>{
+  await expect(service.setAccess(actor(user),user,true)).rejects.toMatchObject({code:'OWNER_REQUIRED'});
+  await service.setAccess(actor(owner),user,true);expect(store.setAllowed).toHaveBeenCalledWith(guild,user,true,owner);
+  await expect(service.accessList(actor(user))).rejects.toMatchObject({code:'OWNER_REQUIRED'});
+  await repository.setLockdown(true,owner);await expect(service.setAccess(actor(owner),user,false)).rejects.toMatchObject({code:'LOCKDOWN'});
+});
+it('撤銷後舊 Pending 按鈕不可使用；授權 Admin 也需列在名單',async()=>{
+  const r=await offer();vi.mocked(store.allowed).mockResolvedValue(false);
+  await expect(service.choose(actor(),r.id,channel,prompt,'keep')).rejects.toMatchObject({code:'PERMISSION_DENIED'});
+  await expect(service.choose(actor(owner),r.id,channel,prompt,'keep')).rejects.toMatchObject({code:'PERMISSION_DENIED'});expect(storage.upload).not.toHaveBeenCalled();
+});
+it('上傳過程撤銷上傳者名單，停止結果與刪除',async()=>{
+  const r=await publicOffer();vi.mocked(storage.upload).mockImplementation(async()=>{vi.mocked(store.allowed).mockResolvedValue(false);return{size:100,contentType:'image/png'};});
+  await service.choose(actor(),r.id,channel,prompt,'delete');expect(r.status).toBe('PartiallyCompleted');expect(transport.result).not.toHaveBeenCalled();expect(transport.deleteOriginal).not.toHaveBeenCalled();
 });

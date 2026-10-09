@@ -6,6 +6,7 @@
 
 | 指令 | 用途 |
 |---|---|
+| /r2 access add / remove / list | Owner 手動管理此 Guild 上傳者；add／remove 選 user。名單預設空白，含 Owner 自己需加入 |
 | /r2 status / test | Guild 策略與唯讀 HeadBucket；test 不上傳物件 |
 | /r2 channel add / remove / list | channel；設定監聽 Guild 文字頻道 |
 | /r2 config | access、max_mb、max_files、types、prefix、allow_delete、members、prompt_seconds、result_channel；無參數只檢視 |

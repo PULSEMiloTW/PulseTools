@@ -6,6 +6,9 @@ export interface R2Request {
 }
 export interface R2Object { id: string; guildId: string; requestId: string; attachmentId: string; filename: string; key: string; contentType: string; size: number; status: 'Uploading' | 'Uploaded' | 'Unknown'; createdAt: Date; uploadedAt?: Date | null; }
 export interface R2Store {
+  allowed(guildId:string,userId:string):Promise<boolean>;
+  accessList(guildId:string):Promise<string[]>;
+  setAllowed(guildId:string,userId:string,enabled:boolean,ownerId:string):Promise<void>;
   settings(guildId: string): Promise<R2Settings>;
   setSettings(guildId: string, settings: R2Settings): Promise<void>;
   create(input: Pick<R2Request,'guildId'|'channelId'|'messageId'|'uploaderId'|'attachments'|'settings'>): Promise<R2Request | undefined>;

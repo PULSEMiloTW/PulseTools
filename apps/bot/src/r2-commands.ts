@@ -10,7 +10,12 @@ export async function r2Command(interaction:ChatInputCommandInteraction,actor:Ac
   const sub=interaction.options.getSubcommand(),group=interaction.options.getSubcommandGroup(false),settings=await service.store.settings(actor.guildId);
   if(group==='file') await service.core.permissions.requireGuild(actor.guildId); else await service.core.permissions.requireAdmin(actor);
   const timezone=(await service.core.repository.guild(actor.guildId))?.configuration.timezone??'Asia/Taipei';
-  if(sub==='status') return `R2 憑證：${service.storage.configured?'已設定':'未設定'}\n模組：${await service.core.modules.enabled(actor.guildId,'PT-10')?'啟用':'停用'}\n模式：${settings.access}\n監聽頻道：${settings.channels.join(', ')||'無'}\n刪除政策：${settings.allowDelete}\n最大檔案：${settings.maxBytes} bytes × ${settings.maxFiles}\n類型：${settings.allowedTypes.join(', ')}\n確認期限：${settings.promptSeconds} 秒`;
+  if(group==='access') {
+    if(sub==='list') return (await service.accessList(actor)).join('\n')||'尚未授權任何上傳者；請用 /r2 access add 手動加入（含 Owner 自己）。';
+    await service.setAccess(actor,interaction.options.getUser('user',true).id,sub==='add');
+    return '此 Guild 的 R2 上傳授權已更新；不會授予其他管理權限。';
+  }
+  if(sub==='status') return `R2 憑證：${service.storage.configured?'已設定':'未設定'}\n模組：${await service.core.modules.enabled(actor.guildId,'PT-10')?'啟用':'停用'}\nCustom Domain：${service.storage.publicAvailable?'已設定':'未設定或格式不合法（R2_PUBLIC_BASE_URL）'}\n模式：${settings.access}\n上傳權限：Owner 手動授權名單\n監聽頻道：${settings.channels.join(', ')||'無'}\n刪除政策：${settings.allowDelete}\n最大檔案：${settings.maxBytes} bytes × ${settings.maxFiles}\n類型：${settings.allowedTypes.join(', ')}\n確認期限：${settings.promptSeconds} 秒`;
   if(group==='channel') {
     if(sub==='list') return settings.channels.join('\n')||'沒有監聽頻道。';
     await service.core.permissions.requireAdmin(actor,true);
@@ -30,7 +35,8 @@ export async function r2Command(interaction:ChatInputCommandInteraction,actor:Ac
     if(!Object.keys(changes).length) return `${JSON.stringify(settings,null,2)}\n可用類型：${r2FileTypes.join(', ')}`;
     await service.core.permissions.requireAdmin(actor,true);
     const next=r2SettingsSchema.parse({...settings,...changes});
-    if(next.access==='public' && !service.storage.publicAvailable || next.allowDelete && next.access!=='public') throw new PulseError('INVALID_INPUT');
+    if(next.access==='public' && !service.storage.publicAvailable) return '請先在本機 .env 的 R2_PUBLIC_BASE_URL 填入有效 HTTPS Custom Domain，再由你手動重啟。政策尚未更新。';
+    if(next.allowDelete && next.access!=='public') throw new PulseError('INVALID_INPUT');
     await service.store.setSettings(actor.guildId,next); return 'R2 上傳政策已更新。憑證只從本機 .env 讀取。';
   }
   if(sub==='test') {await service.core.permissions.requireAdmin(actor,true);await service.storage.test();return '指定 Bucket 連線檢查通過（HeadBucket）；未上傳或刪除物件。';}
@@ -42,7 +48,7 @@ export async function r2Command(interaction:ChatInputCommandInteraction,actor:Ac
   const links = [];
   for(const file of await service.store.objects(actor.guildId,id)) {
     lines.push(`${file.filename} · ${file.status} · ${file.size} bytes · ${file.contentType}\nObject Key：${file.key}\n上傳時間：${file.uploadedAt?.toISOString()??'尚未確認'}`);
-    if(file.status==='Uploaded') links.push({name:file.filename,url:await service.storage.link(file.key,request.settings.access)});
+    if(file.status==='Uploaded') links.push({name:file.filename,url:await service.storage.link(file.key,request.settings.access,file.contentType)});
   }
   return {description:lines.join('\n'),links};
 }

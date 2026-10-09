@@ -113,3 +113,7 @@ export const r2UploadedObjects = pgTable('r2_uploaded_objects', {
 export const r2UploadEvents = pgTable('r2_upload_events', {
   id: uuid('id').defaultRandom().primaryKey(), guildId: text('guild_id').notNull(), requestId: uuid('request_id').notNull(), status: text('status').notNull(), code: text('code'), occurredAt: utc('occurred_at'),
 }, t => [foreignKey({ columns:[t.guildId,t.requestId],foreignColumns:[r2UploadRequests.guildId,r2UploadRequests.id] }), index('r2_event_time').on(t.guildId,t.occurredAt)]).enableRLS();
+
+export const r2UploadUsers = pgTable('r2_upload_users', {
+  guildId: text('guild_id').notNull().references(()=>guilds.id), userId: text('user_id').notNull(), grantedBy: text('granted_by').notNull(), createdAt: utc('created_at'),
+}, t=>[primaryKey({columns:[t.guildId,t.userId]})]).enableRLS();
