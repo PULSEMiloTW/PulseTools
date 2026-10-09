@@ -1,6 +1,6 @@
 # Phase 3 — 成員及伺服器即時事件
 
-日期：2026-10-09。原始碼與資料庫整合完成；真實通知與成員／語音／角色／頻道事件驗收待使用者手動重啟。尚未進入 Phase 4。
+日期：2026-10-09。原始碼與資料庫整合完成；真實語音事件與通知發送已驗證，其他事件的手動驗收進度見下方。尚未進入 Phase 4。
 
 ## 範圍
 
@@ -42,6 +42,13 @@ GuildVoiceStates / GuildInvites 隨新版啟動載入。邀請事件另需對來
 - 真實 Gateway 與通知發送尚待下方手動驗收；不以離線測試或 migration 成功代替。
 
 ## 手動啟用與驗收
+
+### 2026-10-09 實際驗收進度
+
+- 使用者已手動載入新版。歡樂Ma屋的真實 `voice.join`、`voice.switch`、`voice.leave` 各一筆已保存；對應三筆 PT-01 Outbox 均為 `Sent`、`isTest=false`，無錯誤碼。使用者確認操作完成，事件入庫到自動通知的完整流程通過。
+- 歡樂Ma屋 PT-02 加入與離開測試通知各一筆、Pulse Studio HQ PT-01 訊息測試通知一筆均為 `Sent`，無錯誤碼。測試通知不視為真實成員或訊息事件。
+- 歡樂Ma屋另有一筆真實 `channel.update` 紀錄。真實成員加入／離開、角色事件及重啟後通知持久化仍待手動驗證，尚未宣稱 Phase 3 全部驗收完成。
+- `direction` 在 Discord 選單顯示為「加入」與「離開」；下方 `join` / `leave` 為內部值。操作時應從下拉選單選取，不能直接貼上內部值當成已選定的選項。
 
 1. Developer Portal → PulseTools → Bot → Privileged Gateway Intents，開啟 **Server Members Intent** 並儲存。保持 Message Content Intent 啟用。
 2. 本機 .env 新增 `DISCORD_MEMBER_EVENTS_ENABLED=true`；不需要貼任何機密。
