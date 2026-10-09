@@ -6,7 +6,7 @@ import { connectDatabase } from '../packages/database/src/connection.js';
 import { PostgresRepository } from '../packages/database/src/repository.js';
 import { configurationHistory, guilds, securityEvents } from '../packages/database/src/schema.js';
 import { createCore } from '../packages/core/src/index.js';
-import { guildConfigurationSchema } from '../packages/shared/src/models.js';
+import { auditEventTypes, guildConfigurationSchema } from '../packages/shared/src/models.js';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -16,6 +16,9 @@ import * as schema from '../packages/database/src/schema.js';
 import { PostgresAuditRepository } from '../packages/database/src/audit-repository.js';
 import { AuditService } from '../packages/core/src/audit-service.js';
 import type { MessageEvent } from '../packages/shared/src/audit.js';
+import { PostgresServerEventRepository } from '../packages/database/src/server-event-repository.js';
+import { PostgresNotificationRepository } from '../packages/database/src/notification-repository.js';
+import type { ServerEvent } from '../packages/shared/src/server-events.js';
 
 const sandbox = process.env.DATABASE_TEST_SCHEMA_ISOLATION === '1';
 const url = sandbox ? process.env.DATABASE_URL : process.env.TEST_DATABASE_URL;
@@ -204,6 +207,93 @@ it('原文查閱須明確 viewer 授權、原生管理員與同 Guild 內部角�
   await expect(audit.snapshot({ userId: viewer, guildId: guildA, nativeAdministrator: false }, message)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
   await expect(audit.snapshot({ userId: viewer, guildId: guildB, nativeAdministrator: true }, message)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
 });
+const serverRepository = new PostgresServerEventRepository(db);
+const notificationRepository = new PostgresNotificationRepository(db);
+const serverEvent = (overrides: Partial<ServerEvent> = {}): ServerEvent => ({ guildId: guildA, entityId: owner, channelId: null, type: 'member.join', eventKey: 'session:1:member.join', receivedAt: new Date(), eventAt: null, metadata: { guildName: '整合測試 Guild', userId: owner, userName: '整合測試成員', memberCount: 65 }, ...overrides });
+it('Phase 3 Migration、RLS 與各分類／歡迎頻道設定持久化', async () => {
+  await core.modules.setEnabled(actor(guildA), 'PT-01', true);
+  await core.modules.setEnabled(actor(guildA), 'PT-02', true);
+  const guild = await core.configuration.view(actor(guildA));
+  await core.configuration.replace(actor(guildA), { ...guild.configuration,
+    audit: { ...guild.configuration.audit, enabledEvents: [...auditEventTypes] },
+    channels: { message: '300000000000000010', member: '300000000000000011', voice: '300000000000000012', system: '300000000000000013' },
+    welcome: { ...guild.configuration.welcome, joinChannel: '300000000000000014', leaveChannel: '300000000000000015' } }, guild.revision);
+  const second = testConnection();
+  try {
+    const saved = await createCore(new PostgresRepository(second.db), owner).configuration.view(actor(guildA));
+    expect(saved.configuration.welcome).toMatchObject({ joinChannel: '300000000000000014', leaveChannel: '300000000000000015' });
+    expect((await core.configuration.view(actor(guildB))).configuration.welcome.joinChannel).toBeUndefined();
+    const result = await second.db.execute<{ relrowsecurity: boolean }>(sql`select relrowsecurity from pg_class where relnamespace=current_schema()::regnamespace and relname in ('server_events','notification_outbox')`);
+    expect(result.rows).toHaveLength(2); expect(result.rows.every((row) => row.relrowsecurity)).toBe(true);
+  } finally { await second.pool.end(); }
+});
+it('Server 事件與通知在同一交易去重，歡迎及 Audit 分別路由；Guild 隔離', async () => {
+  expect((await Promise.all([serverRepository.ingest(serverEvent()), serverRepository.ingest(serverEvent())])).sort()).toEqual(['duplicate', 'stored']);
+  const events = await serverRepository.recent(guildA);
+  expect(events).toHaveLength(1); expect(events[0]).toMatchObject({ attribution: '無法確認', timestampSource: 'received' });
+  const jobs = await db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.eventKey, 'session:1:member.join'));
+  expect(jobs.map((row) => row.channelId).sort()).toEqual(['300000000000000011', '300000000000000014']);
+  expect(await serverRepository.ingest(serverEvent({ guildId: guildB }))).toBe('ignored');
+  expect(await serverRepository.recent(guildB)).toHaveLength(0);
+});
+it('訊息通知只含中繼資料，紀錄輸出頻道排除回授', async () => {
+  await auditRepository.ingest(messageEvent({ messageId: '400000000000000008', eventKey: 'phase3-message', content: 'private-phase3-original' }));
+  const [saved] = await db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.eventKey, 'phase3-message'));
+  expect(saved?.channelId).toBe('300000000000000010');
+  expect(JSON.stringify(saved?.payload)).not.toContain('private-phase3-original');
+  expect(await auditRepository.ingest(messageEvent({ channelId: '300000000000000010', eventKey: 'feedback' }))).toBe('ignored');
+});
+it('Audit 與歡迎路由相同時只發一筆歡迎通知，PT-02 可獨立於 PT-01 運作', async () => {
+  await core.configuration.setChannel(actor(guildA), 'member', '300000000000000014');
+  await serverRepository.ingest(serverEvent({ eventKey: 'shared-route' }));
+  const jobs = await db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.eventKey, 'shared-route'));
+  expect(jobs).toHaveLength(1); expect(jobs[0]?.moduleId).toBe('PT-02');
+  await core.modules.setEnabled(actor(guildA), 'PT-01', false);
+  expect(await serverRepository.ingest(serverEvent({ type: 'member.leave', eventKey: 'welcome-only' }))).toBe('stored');
+  expect(await serverRepository.ingest(serverEvent({ type: 'voice.join', eventKey: 'disabled-audit' }))).toBe('ignored');
+  await core.modules.setEnabled(actor(guildA), 'PT-01', true);
+});
+it('SKIP LOCKED 並行取任務不重複，重開連線保留 Sent 與結果不明狀態', async () => {
+  const [first, second] = await Promise.all([notificationRepository.claim(), notificationRepository.claim()]);
+  expect(first?.id).toBeDefined(); expect(second?.id).toBeDefined(); expect(first?.id).not.toBe(second?.id);
+  await notificationRepository.sent(first!, '500000000000000001');
+  const restarted = testConnection();
+  try {
+    const repository = new PostgresNotificationRepository(restarted.db);
+    await repository.recover();
+    const [sent] = await restarted.db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.id, first!.id));
+    const [unknown] = await restarted.db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.id, second!.id));
+    expect(sent).toMatchObject({ status: 'Sent', sentMessageId: '500000000000000001' });
+    expect(unknown).toMatchObject({ status: 'Failed', errorCode: 'DELIVERY_UNKNOWN' });
+  } finally { await restarted.pool.end(); }
+});
+it('通知依現在授權／路由驗證；最多三次可重試失敗後停止', async () => {
+  const job = await notificationRepository.claim();
+  expect(job).toBeDefined();
+  await db.update(schema.notificationOutbox).set({ status: 'Cancelled' }).where(eq(schema.notificationOutbox.status, 'Pending'));
+  await notificationRepository.fail(job!, 'DISCORD_RETRYABLE', true);
+  const second = await notificationRepository.claim(new Date(Date.now() + 60000));
+  expect(second?.id).toBe(job!.id); expect(second?.attempts).toBe(2);
+  await notificationRepository.fail(second!, 'DISCORD_RETRYABLE', true);
+  const third = await notificationRepository.claim(new Date(Date.now() + 60000));
+  expect(third?.attempts).toBe(3);
+  await notificationRepository.fail(third!, 'DISCORD_RETRYABLE', true);
+  const [failed] = await db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.id, job!.id));
+  expect(failed?.status).toBe('Failed');
+  await core.modules.setEnabled(actor(guildA), job!.moduleId, false);
+  expect(await notificationRepository.configuration(job!)).toBeUndefined();
+  await core.modules.setEnabled(actor(guildA), job!.moduleId, true);
+});
+it('獨立事件開關停止 Server 記錄；測試通知明確標示且無假 Audit 事件', async () => {
+  const guild = await core.configuration.view(actor(guildA));
+  await core.configuration.setAudit(actor(guildA), { ...guild.configuration.audit, enabledEvents: guild.configuration.audit.enabledEvents.filter((type) => type !== 'voice.join') });
+  expect(await serverRepository.ingest(serverEvent({ type: 'voice.join', eventKey: 'off-voice' }))).toBe('ignored');
+  const before = (await serverRepository.recent(guildA)).length;
+  await notificationRepository.test(guildA, 'PT-02', 'member.join', { userId: owner, userName: '明確測試通知' });
+  expect((await serverRepository.recent(guildA)).length).toBe(before);
+  const [queued] = await db.select().from(schema.notificationOutbox).where(and(eq(schema.notificationOutbox.status, 'Pending'), eq(schema.notificationOutbox.moduleId, 'PT-02')));
+  expect(queued?.payload.isTest).toBe(true);
+});
 it('保存期限縮短後清除 Snapshot、級聯版本及事件，但不移除 Guild 設定', async () => {
   await core.modules.setEnabled(actor(guildA), 'PT-01', true);
   await core.configuration.setAudit(actor(guildA), { enabledEvents: ['message.create', 'message.update', 'message.delete'], retentionDays: 30 });
@@ -220,8 +310,10 @@ it('保存期限縮短後清除 Snapshot、級聯版本及事件，但不移除 
   expect(await auditRepository.snapshot(guildA, message)).toBeUndefined();
   expect(await db.select().from(schema.messageVersions)).toHaveLength(0);
   expect(await auditRepository.recent(guildA)).toHaveLength(0);
+  expect(await db.select().from(schema.notificationOutbox)).toHaveLength(0);
+  expect(await db.select().from(schema.serverEvents)).toHaveLength(0);
   expect((await repository.guild(guildA))?.authorized).toBe(true);
-});
+}, 15000);
 it('撤銷 Guild 不刪除持久設定但立即拒絕讀取與新事件', async () => {
   await core.guilds.setAuthorization(owner, guildA, '測試 A', false);
   await expect(core.configuration.view(actor(guildA))).rejects.toMatchObject({ code: 'GUILD_DENIED' });

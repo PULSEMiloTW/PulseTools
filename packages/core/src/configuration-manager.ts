@@ -38,4 +38,8 @@ export class ConfigurationManager {
     const guild = await this.view(actor);
     return this.replace(actor, { ...guild.configuration, channels: { ...guild.configuration.channels, [purpose]: channelId } }, guild.revision);
   }
+  async setWelcome(actor: Actor, welcome: GuildConfiguration['welcome'], expectedRevision: number) {
+    const guild = await this.view(actor);
+    return this.replace(actor, { ...guild.configuration, welcome }, expectedRevision);
+  }
 }

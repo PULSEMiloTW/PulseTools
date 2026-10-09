@@ -21,3 +21,5 @@ Supabase 提供另一個明確的測試命令：`npm run test:database:sandbox`�
 Phase 1 不包含可見網頁修改，無 Dashboard browser 驗收；Phase 6 必須做代表性畫面、互動及 console 驗證。
 
 Phase 2 額外驗證 EventRouter 佇列、重試、停止、Gateway 缺失欄位與政策預設；PostgreSQL 整合驗證原文確認、版本、刪除、重開連線、去重、Guild / 頻道隔離、viewer、RLS、期限縮短及級聯清理。真實訊息與手動重啟步驟見 PHASE_2_REPORT.md，未完成前不得進入 Phase 3。
+
+Phase 3 加入成員／語音差異、通知 Embed、mention 防護、Worker 重入／未就緒／取消、Discord 限流與權限失敗、成功發送後 DB 寫回失敗等測試。PostgreSQL 測試包含 Server / Outbox 同交易、RLS、路由、去重、Pending／Sent 持久化、Sending 不明狀態恢復、重試上限及清理。保存期限案例含多次遠端 DB round trip，單案例時限 15 秒，不擴大全部離線測試時限。Phase 3 真實 Gateway／通知驗收見 PHASE_3_REPORT.md；測試 transport 不對 Discord 發送訊息。

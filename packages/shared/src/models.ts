@@ -9,6 +9,10 @@ export type InternalRole = z.infer<typeof internalRoleSchema>;
 export const messageEventTypes = ['message.create', 'message.update', 'message.delete'] as const;
 export const messageEventTypeSchema = z.enum(messageEventTypes);
 export type MessageEventType = z.infer<typeof messageEventTypeSchema>;
+export const serverEventTypes = ['member.join', 'member.leave', 'member.update', 'member.nickname', 'member.role.add', 'member.role.remove', 'voice.join', 'voice.leave', 'voice.switch', 'role.create', 'role.update', 'role.delete', 'role.permissions', 'channel.create', 'channel.update', 'channel.delete', 'channel.permissions', 'guild.update', 'invite.create', 'invite.delete'] as const;
+export const auditEventTypes = [...messageEventTypes, ...serverEventTypes] as const;
+export const auditEventTypeSchema = z.enum(auditEventTypes);
+export const logCategories = ['member', 'message', 'voice', 'moderation', 'system'] as const;
 export const guildConfigurationSchema = z.object({
   language: z.literal('zh-TW').default('zh-TW'),
   timezone: z.string().refine((value) => {
@@ -24,9 +28,16 @@ export const guildConfigurationSchema = z.object({
     privacyNotice: z.string().max(1500).default(''),
   }).strict().default({ enabled: false, allowedChannels: [], excludedChannels: [], retentionDays: 30, viewerIds: [], privacyNotice: '' }),
   audit: z.object({
-    enabledEvents: z.array(messageEventTypeSchema).default([...messageEventTypes]),
+    enabledEvents: z.array(auditEventTypeSchema).max(30).default([...auditEventTypes]),
     retentionDays: z.number().int().min(1).max(365).default(30),
-  }).strict().default({ enabledEvents: [...messageEventTypes], retentionDays: 30 }),
+  }).strict().default({ enabledEvents: [...auditEventTypes], retentionDays: 30 }),
+  welcome: z.object({
+    joinEnabled: z.boolean().default(true), leaveEnabled: z.boolean().default(true),
+    joinChannel: snowflake.optional(), leaveChannel: snowflake.optional(),
+    joinMessage: z.string().min(1).max(1000).default('👋 歡迎加入【{guild}】！'),
+    leaveMessage: z.string().min(1).max(1000).default('👋 成員已離開【{guild}】'),
+    showAccountCreated: z.boolean().default(false),
+  }).strict().default({ joinEnabled: true, leaveEnabled: true, joinMessage: '👋 歡迎加入【{guild}】！', leaveMessage: '👋 成員已離開【{guild}】', showAccountCreated: false }),
 }).strict().superRefine((value, context) => {
   if (value.capture.enabled && (!value.capture.allowedChannels.length || !value.capture.privacyNotice.trim())) {
     context.addIssue({ code: 'custom', path: ['capture'], message: '啟用原文保存必須指定頻道與隱私告知。' });

@@ -3,10 +3,15 @@ import type { Core } from './index.js';
 import { type Actor, snowflake } from '../../shared/src/models.js';
 import { PulseError } from '../../shared/src/errors.js';
 import { receivedTimestamp } from '../../shared/src/timestamp.js';
+import type { PostgresServerEventRepository } from '../../database/src/server-event-repository.js';
 
 export class AuditService {
-  constructor(private readonly repository: PostgresAuditRepository, private readonly core: Core) {}
-  async recent(actor: Actor) { await this.core.permissions.requireAdmin(actor); return this.repository.recent(actor.guildId); }
+  constructor(private readonly repository: PostgresAuditRepository, private readonly core: Core, private readonly server?: PostgresServerEventRepository) {}
+  async recent(actor: Actor) {
+    await this.core.permissions.requireAdmin(actor);
+    const [messages, server] = await Promise.all([this.repository.recent(actor.guildId), this.server?.recent(actor.guildId) ?? Promise.resolve([])]);
+    return [...messages.map((event) => ({ ...event, entityId: event.messageId })), ...server.map((event) => ({ ...event, captureStatus: '不適用' }))].sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime()).slice(0, 10);
+  }
   async snapshot(actor: Actor, messageId: string) {
     await this.core.permissions.requireAdmin(actor);
     if (!snowflake.safeParse(messageId).success) throw new PulseError('INVALID_INPUT');

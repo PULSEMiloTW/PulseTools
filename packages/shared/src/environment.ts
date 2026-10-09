@@ -20,6 +20,7 @@ const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   DISCORD_MESSAGE_EVENTS_ENABLED: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+  DISCORD_MEMBER_EVENTS_ENABLED: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
 });
 export type Environment = z.infer<typeof schema>;
 export function parseEnvironment(input: Record<string, string | undefined>): Environment {

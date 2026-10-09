@@ -20,3 +20,5 @@ Monorepo + Modular Monolith，以 Node.js 24 LTS 與 Strict TypeScript 執行。
 模組開關保存在資料庫，程序內序列化同 Guild 的生命週期操作；PostgreSQL advisory lock 防止同資料庫兩個 Bot 同時啟動。模組個別初始化錯誤不阻止其他模組恢復。當連線失去程序鎖時 Bot 安全停止。
 
 後續 API 必須沿用 Core Services 與相同授權，不新增第二套設定或管理邏輯。必要 Core 權限、錯誤邊界與復原管理不受業務模組開關停用。
+
+Phase 3：Discord 型別事件 → 每 Guild EventRouter → PostgresServerEventRepository → 同交易 Notification Outbox → NotificationWorker → Discord Embed。訊息沿用 Phase 2 Repository 並在同一交易排入不含原文的通知。Gateway context 使用 session 雜湊與 sequence 防重；PT-02 獨立生命週期。Worker 在就緒時即時喚醒並每兩秒處理待送工作；使用者啟用模組及設定頻道後才會發送。

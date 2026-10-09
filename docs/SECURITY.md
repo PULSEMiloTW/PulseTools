@@ -14,3 +14,5 @@
 Phase 2 已實作 Audit / 原文保存期限清理、指定及排除頻道、隱私告知、viewer 授權、查閱紀錄及三張原文相關表的 RLS。原文不進普通 Debug Logs。啟用及擴大捕捉範圍需明確確認；關閉保存時同時關閉原文查閱。原文 JSON 附件只透過 Ephemeral 回覆給授權者；已下載附件不在 Bot 可撤回範圍內。
 
 OAuth2 Session / CSRF、R2 安全串流與完整 Error Center 尚未實作，不能對外部署或宣稱完整安全驗收。後續實作須遵守 Master Prompt 與 PT-10 安全狀態機。
+
+Phase 3 通知只包含嚴格 Schema 的中繼資料，不複製訊息原文至 Outbox；不保存 Gateway session 原值或邀請碼。新增兩表啟用 RLS。通知目標只能由授權管理者選擇本 Guild 頻道，發送前重新檢查授權、模組與路由；所有 mention 關閉。Preview 不公開，test 需主動指令且經 Lockdown 檢查。無法確認的發送結果記為 DELIVERY_UNKNOWN，不擅自重送；原文依然只透過授權 Snapshot 存取。

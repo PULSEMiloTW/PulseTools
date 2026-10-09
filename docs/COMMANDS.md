@@ -1,4 +1,4 @@
-# Phase 1–2 Slash Commands
+# Phase 1–3 Slash Commands
 
 僅在 DISCORD_COMMAND_GUILD_IDS 指定的 Guild 手動註冊，不自動註冊全域指令。註冊會替換 PulseTools 專用 Application 在指定 Guild 的指令集合，因此不能使用 PulseCore 共用 Application。
 
@@ -9,6 +9,14 @@
 | /logs status / recent | 本 Guild 紀錄政策與最近十筆事件中繼資料 |
 | /logs snapshot | message_id 查閱可用原文與最近十個版本；權限及保存政策限制 |
 | /logs event set | type / enabled 開關訊息事件 |
+| /logs event category | category / enabled 開關一整類已實作事件；舊設定不自動擴大 |
+| /logs channel set / list | 分類通知路由；set 使用 category / channel |
+| /logs test | 主動發送標示測試的分類通知；不建立假的 Audit |
+| /welcome status / preview | 加入／離開通知設定及 Ephemeral 預覽 |
+| /welcome channel set | direction:join 或 leave，各自指定 channel |
+| /welcome message set | direction / value；支援 Guild、User、ID、人數與帳號建立時間模板 |
+| /welcome toggle / account | direction / enabled 開關通知；account 控制建立時間顯示 |
+| /welcome test | direction 主動排入標示測試的成員通知 |
 | /logs retention set | days 設定事件及原文期限 1–365 天 |
 | /logs capture enable | channel / notice / confirm；公告隱私告知後啟用原文保存 |
 | /logs capture disable / exclude | 關閉新原文保存與查閱，或排除 channel |
@@ -29,6 +37,6 @@
 
 `config` 需先啟用 PT-03。必要 Owner、Module、System 診斷管理不受業務模組停用影響。所有指令先 defer Ephemeral，避免 DB 操作超過 Interaction 首次回覆期限。
 
-`logs` 需 PT-01，並在本機 .env 設定 DISCORD_MESSAGE_EVENTS_ENABLED=true 及 Discord Portal 啟用 Message Content Intent，再由使用者手動重啟。`module health` 顯示生命週期健康狀態，完整健康輪詢於 Phase 4 提供。`pulse setup` 顯示本次程序的 Intents，不代表訊息捕捉已完成驗收。通知頻道路由與 /logs channel / test 於 Phase 3 提供。
+`logs` 需 PT-01、DISCORD_MESSAGE_EVENTS_ENABLED=true 與 Message Content Intent；成員事件與 `welcome` 另需 Server Members Intent、DISCORD_MEMBER_EVENTS_ENABLED=true 及 PT-02。Intents 變更需手動重啟，路由／文字／事件開關立即生效。通知輸出頻道排除訊息捕捉，避免回授。`module health` 為生命週期狀態，完整健康輪詢 Phase 4；`pulse setup` 不代表完整事件驗收。`/logs status` 顯示持久化發送結果與失敗代碼。
 
 其餘 Master Specification 指令於對應階段實作，不註冊不能執行的占位指令。

@@ -1,6 +1,6 @@
 # Phase 2 — Audit 基礎
 
-日期：2026-10-09。原始碼、資料庫整合及指令準備完成；使用者已完成訊息接收設定與 PT-01 啟用，原文版本驗收尚待完成。尚未進入 Phase 3。
+日期：2026-10-09。使用者已完成實際訊息操作，資料庫確認原文、編輯及刪除版本；核心流程驗收通過，已開始 Phase 3。Snapshot 再次手動重啟後的查閱仍可依下方步驟追加確認，不宣稱已取得該項新證據。
 
 ## 已實作
 
@@ -46,6 +46,8 @@
 9. 手動重啟後確認設定及未過期 Snapshot 仍保存。PT-01 停用時新訊息不再寫入 Audit；啟用後才恢復。
 
 只需回報 /logs status、/logs recent 與是否符合上述結果；不用貼原文附件或任何 Secret。
+
+後續使用者要求「請繼續」時再次查驗：HQ capture.enabled=true，已有兩筆 Snapshot；每筆均有 originalContent、latestContent、deletedAt 與三筆版本。HQ 共有七筆 Audit；另一 Guild 無 Snapshot、原文仍關閉。查詢只檢查欄位存在及數量，未輸出原文。據此確認實際原文、編輯與刪除儲存流程，進入 Phase 3。
 
 ## 官方依據
 

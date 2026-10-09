@@ -1,6 +1,7 @@
 import { and, desc, eq, lte, sql } from 'drizzle-orm';
 import type { Database } from './connection.js';
-import { auditEvents, guilds, messageSnapshots, messageVersions, moduleStates } from './schema.js';
+import { auditEvents, guilds, messageSnapshots, messageVersions, moduleStates, notificationOutbox, serverEvents } from './schema.js';
+import { enqueueNotification } from './notification-repository.js';
 import { guildConfigurationSchema } from '../../shared/src/models.js';
 import { messageEventSchema, type CaptureStatus, type MessageEvent } from '../../shared/src/audit.js';
 
@@ -16,6 +17,8 @@ export class PostgresAuditRepository {
       const [module] = await tx.select().from(moduleStates).where(and(eq(moduleStates.guildId, event.guildId), eq(moduleStates.moduleId, 'PT-01'))).for('share');
       const policy = guildConfigurationSchema.parse(guild.configuration);
       if (!module?.enabled || !policy.audit.enabledEvents.includes(event.type)) return 'ignored';
+      // 通知輸出頻道排除訊息捕捉，避免無作者資訊的 Embed 更新及刪除造成回授。
+      if ([...Object.values(policy.channels), policy.welcome.joinChannel, policy.welcome.leaveChannel].includes(event.channelId)) return 'ignored';
       const now = new Date();
       const [inserted] = await tx.insert(auditEvents).values({
         guildId: event.guildId, channelId: event.channelId, messageId: event.messageId,
@@ -25,6 +28,9 @@ export class PostgresAuditRepository {
         expiresAt: expiry(event.receivedAt, policy.audit.retentionDays),
       }).onConflictDoNothing().returning({ id: auditEvents.id });
       if (!inserted) return 'duplicate';
+      const logChannel = policy.channels.message;
+      if (logChannel) await enqueueNotification(tx, { guildId: event.guildId, moduleId: 'PT-01', eventKey: event.eventKey, channelId: logChannel,
+        payload: { eventType: event.type, entityId: event.messageId, sourceChannelId: event.channelId, eventAt: (event.eventAt ?? event.receivedAt).toISOString(), timestampSource: event.eventAt ? 'discord' : 'received', metadata: event.authorId ? { userId: event.authorId } : {} }, expiresAt: expiry(event.receivedAt, policy.audit.retentionDays) });
       const capture = policy.capture;
       if (!capture.enabled || !capture.allowedChannels.includes(event.channelId) || capture.excludedChannels.includes(event.channelId)) return 'stored';
       const createdAt = event.messageCreatedAt ?? event.eventAt ?? event.receivedAt;
@@ -85,6 +91,9 @@ export class PostgresAuditRepository {
         await tx.delete(auditEvents).where(and(eq(auditEvents.guildId, guild.id), sql`(${auditEvents.expiresAt} <= ${now} or ${auditEvents.receivedAt} <= ${new Date(now.getTime() - policy.audit.retentionDays * 86400000)})`));
         await tx.delete(messageSnapshots).where(and(eq(messageSnapshots.guildId, guild.id), sql`(${messageSnapshots.expiresAt} <= ${now} or ${messageSnapshots.createdAt} <= ${new Date(now.getTime() - policy.capture.retentionDays * 86400000)})`));
         await tx.delete(messageVersions).where(lte(messageVersions.expiresAt, now));
+        const cutoff = new Date(now.getTime() - policy.audit.retentionDays * 86400000);
+        await tx.delete(serverEvents).where(and(eq(serverEvents.guildId, guild.id), sql`(${serverEvents.expiresAt} <= ${now} or ${serverEvents.receivedAt} <= ${cutoff})`));
+        await tx.delete(notificationOutbox).where(and(eq(notificationOutbox.guildId, guild.id), sql`(${notificationOutbox.expiresAt} <= ${now} or ${notificationOutbox.createdAt} <= ${cutoff})`));
       });
     }
   }

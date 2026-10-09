@@ -2,6 +2,7 @@ import { boolean, check, foreignKey, index, integer, jsonb, pgTable, primaryKey,
 import { sql } from 'drizzle-orm';
 import type { GuildConfiguration, InternalRole, ModuleHealth, ModuleId } from '../../shared/src/models.js';
 import type { CaptureStatus } from '../../shared/src/audit.js';
+import type { EventMetadata, NotificationPayload } from '../../shared/src/server-events.js';
 
 const utc = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' }).notNull().defaultNow();
 export const guilds = pgTable('guilds', {
@@ -51,3 +52,17 @@ export const messageVersions = pgTable('message_versions', {
   revision: integer('revision').notNull(), content: text('content'), captureStatus: text('capture_status').$type<CaptureStatus>().notNull(),
   eventType: text('event_type').notNull(), eventAt: utc('event_at'), receivedAt: utc('received_at'), expiresAt: utc('expires_at'),
 }, (table) => [foreignKey({ columns: [table.guildId, table.messageId], foreignColumns: [messageSnapshots.guildId, messageSnapshots.messageId] }).onDelete('cascade'), uniqueIndex('message_revision').on(table.guildId, table.messageId, table.revision), index('version_expiry').on(table.expiresAt)]).enableRLS();
+export const serverEvents = pgTable('server_events', {
+  id: uuid('id').defaultRandom().primaryKey(), guildId: text('guild_id').notNull().references(() => guilds.id),
+  entityId: text('entity_id').notNull(), channelId: text('channel_id'), eventType: text('event_type').notNull(), eventKey: text('event_key').notNull(),
+  metadata: jsonb('metadata').$type<EventMetadata>().notNull(), eventAt: utc('event_at'), receivedAt: utc('received_at'), processedAt: utc('processed_at'),
+  timestampSource: text('timestamp_source').$type<'discord' | 'received'>().notNull(), attribution: text('attribution').notNull().default('無法確認'), expiresAt: utc('expires_at'),
+}, (table) => [uniqueIndex('server_event_deduplication').on(table.guildId, table.eventKey), index('server_event_time').on(table.guildId, table.eventAt), index('server_event_expiry').on(table.expiresAt)]).enableRLS();
+export const notificationOutbox = pgTable('notification_outbox', {
+  id: uuid('id').defaultRandom().primaryKey(), guildId: text('guild_id').notNull().references(() => guilds.id),
+  moduleId: text('module_id').$type<'PT-01' | 'PT-02'>().notNull(), eventKey: text('event_key').notNull(), channelId: text('channel_id').notNull(),
+  payload: jsonb('payload').$type<NotificationPayload>().notNull(),
+  status: text('status').$type<'Pending' | 'Sending' | 'Sent' | 'Failed' | 'Cancelled'>().notNull().default('Pending'),
+  attempts: integer('attempts').notNull().default(0), nextAttemptAt: utc('next_attempt_at'), leaseAt: timestamp('lease_at', { withTimezone: true, mode: 'date' }),
+  sentMessageId: text('sent_message_id'), errorCode: text('error_code'), createdAt: utc('created_at'), updatedAt: utc('updated_at'), expiresAt: utc('expires_at'),
+}, (table) => [uniqueIndex('notification_deduplication').on(table.guildId, table.moduleId, table.eventKey), index('notification_pending').on(table.status, table.nextAttemptAt), check('notification_status', sql`${table.status} in ('Pending','Sending','Sent','Failed','Cancelled')`)]).enableRLS();

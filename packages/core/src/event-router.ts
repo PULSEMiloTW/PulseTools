@@ -1,15 +1,15 @@
 import type { MessageEvent } from '../../shared/src/audit.js';
 
-export class EventRouter {
+export class EventRouter<T extends { guildId: string; eventKey: string } = MessageEvent> {
   private readonly queues = new Map<string, Promise<void>>();
   private pending = 0;
   private stopped = false;
-  constructor(private readonly consume: (event: MessageEvent) => Promise<unknown>, private readonly onError: (code: string) => void, private readonly capacity = 1000) {}
-  dispatch(event: MessageEvent): Promise<void> {
+  constructor(private readonly consume: (event: T) => Promise<unknown>, private readonly onError: (code: string) => void, private readonly capacity = 1000) {}
+  dispatch(event: T): Promise<void> {
     if (this.stopped) return Promise.resolve();
     if (this.pending >= this.capacity) { this.onError('AUDIT_QUEUE_FULL'); return Promise.resolve(); }
     this.pending++;
-    const key = `${event.guildId}:${event.messageId}`;
+    const key = event.guildId;
     const operation = (this.queues.get(key) ?? Promise.resolve()).then(async () => {
       for (let attempt = 0; attempt < 3; attempt++) {
         try { await this.consume(event); return; }

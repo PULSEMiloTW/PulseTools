@@ -1,16 +1,37 @@
-import { ApplicationIntegrationType, InteractionContextType, SlashCommandBuilder } from 'discord.js';
-import { moduleIds, messageEventTypes } from '../../../packages/shared/src/models.js';
+import { ApplicationIntegrationType, InteractionContextType, SlashCommandBuilder, ChannelType } from 'discord.js';
+import { moduleIds, auditEventTypes, logCategories } from '../../../packages/shared/src/models.js';
 
 const base = (name: string, description: string) => new SlashCommandBuilder().setName(name).setDescription(description)
   .setContexts(InteractionContextType.Guild).setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
 export const commands = [
+  base('welcome', '成員加入與離開通知')
+    .addSubcommand((s) => s.setName('status').setDescription('查看成員通知設定'))
+    .addSubcommand((s) => s.setName('preview').setDescription('私密預覽通知 Embed').addStringOption((o) => o.setName('direction').setDescription('通知類型').setRequired(true).addChoices({ name: '加入', value: 'join' }, { name: '離開', value: 'leave' })))
+    .addSubcommand((s) => s.setName('test').setDescription('明確發送標示測試的成員通知至設定頻道').addStringOption((o) => o.setName('direction').setDescription('通知類型').setRequired(true).addChoices({ name: '加入', value: 'join' }, { name: '離開', value: 'leave' })))
+    .addSubcommand((s) => s.setName('toggle').setDescription('切換一種成員通知').addStringOption((o) => o.setName('direction').setDescription('通知類型').setRequired(true).addChoices({ name: '加入', value: 'join' }, { name: '離開', value: 'leave' })).addBooleanOption((o) => o.setName('enabled').setDescription('是否通知').setRequired(true)))
+    .addSubcommandGroup((g) => g.setName('channel').setDescription('獨立成員通知頻道').addSubcommand((s) => s.setName('set').setDescription('設定加入或離開通知頻道')
+      .addStringOption((o) => o.setName('direction').setDescription('通知類型').setRequired(true).addChoices({ name: '加入', value: 'join' }, { name: '離開', value: 'leave' }))
+      .addChannelOption((o) => o.setName('channel').setDescription('本 Guild 文字頻道').setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))))
+    .addSubcommandGroup((g) => g.setName('message').setDescription('自訂歡迎／離開文字').addSubcommand((s) => s.setName('set').setDescription('支援 {guild} {user} {user_id} {count} {account_created}')
+      .addStringOption((o) => o.setName('direction').setDescription('通知類型').setRequired(true).addChoices({ name: '加入', value: 'join' }, { name: '離開', value: 'leave' }))
+      .addStringOption((o) => o.setName('value').setDescription('自訂文字').setRequired(true).setMinLength(1).setMaxLength(1000))))
+    .addSubcommand((s) => s.setName('account').setDescription('是否顯示帳號建立日期').addBooleanOption((o) => o.setName('enabled').setDescription('是否顯示').setRequired(true))),
   base('logs', '訊息 Audit 與原文保存政策')
     .addSubcommand((s) => s.setName('status').setDescription('查看本 Guild 紀錄政策與事件接收狀態'))
     .addSubcommand((s) => s.setName('recent').setDescription('查看最近十筆事件中繼資料'))
+    .addSubcommand((s) => s.setName('test').setDescription('明確發送標示測試的事件通知').addStringOption((o) => o.setName('category').setDescription('紀錄分類').setRequired(true).addChoices(...logCategories.filter((value) => value !== 'moderation').map((value) => ({ name: value, value })))))
+    .addSubcommandGroup((g) => g.setName('channel').setDescription('各分類事件通知頻道')
+      .addSubcommand((s) => s.setName('list').setDescription('查看本 Guild 通知頻道路由'))
+      .addSubcommand((s) => s.setName('set').setDescription('設定一種事件分類的紀錄頻道')
+        .addStringOption((o) => o.setName('category').setDescription('分類').setRequired(true).addChoices(...logCategories.map((value) => ({ name: value, value }))))
+        .addChannelOption((o) => o.setName('channel').setDescription('本 Guild 文字頻道').setRequired(true).addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement))))
     .addSubcommand((s) => s.setName('snapshot').setDescription('授權者查看訊息原文與版本').addStringOption((o) => o.setName('message_id').setDescription('訊息 ID').setRequired(true)))
     .addSubcommandGroup((g) => g.setName('event').setDescription('事件政策').addSubcommand((s) => s.setName('set').setDescription('開關一種訊息事件')
-      .addStringOption((o) => o.setName('type').setDescription('事件').setRequired(true).addChoices(...messageEventTypes.map((value) => ({ name: value, value }))))
-      .addBooleanOption((o) => o.setName('enabled').setDescription('是否記錄').setRequired(true))))
+      .addStringOption((o) => o.setName('type').setDescription('事件').setRequired(true).addChoices(...auditEventTypes.map((value) => ({ name: value, value }))))
+      .addBooleanOption((o) => o.setName('enabled').setDescription('是否記錄').setRequired(true)))
+      .addSubcommand((s) => s.setName('category').setDescription('開關一整類已實作事件')
+        .addStringOption((o) => o.setName('category').setDescription('事件分類').setRequired(true).addChoices(...logCategories.filter((value) => value !== 'moderation').map((value) => ({ name: value, value }))))
+        .addBooleanOption((o) => o.setName('enabled').setDescription('是否記錄').setRequired(true))))
     .addSubcommandGroup((g) => g.setName('retention').setDescription('保存期限').addSubcommand((s) => s.setName('set').setDescription('設定事件與原文保存天數')
       .addIntegerOption((o) => o.setName('days').setDescription('1–365 天；縮短後下一次清理會移除過期資料').setRequired(true).setMinValue(1).setMaxValue(365))))
     .addSubcommandGroup((g) => g.setName('capture').setDescription('原文保存政策')

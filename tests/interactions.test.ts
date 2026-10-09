@@ -3,6 +3,7 @@ import type { ChatInputCommandInteraction, Client } from 'discord.js';
 import { handleCommand } from '../apps/bot/src/interaction-handler.js';
 import { createCore } from '../packages/core/src/index.js';
 import { MemoryRepository } from './helpers/memory-repository.js';
+import type { PostgresNotificationRepository } from '../packages/database/src/notification-repository.js';
 
 const owner = '100000000000000001';
 const guild = '200000000000000001';
@@ -39,4 +40,24 @@ it('Discord 回覆失敗不造成未捕捉的 Promise 拒絕', async () => {
     await expect(handleCommand(test.value, runtime())).resolves.toBeUndefined();
     expect(consoleSpy.mock.calls.flat().join(' ')).not.toContain('Token-never-print');
   } finally { consoleSpy.mockRestore(); }
+});
+it('Welcome 公開測試受 Lockdown 阻擋，不排入發送佇列', async () => {
+  const state = runtime();
+  await state.core.guilds.setAuthorization(owner, guild, '離線測試 Guild', true);
+  await state.core.modules.setEnabled({ userId: owner, guildId: guild, nativeAdministrator: true }, 'PT-02', true);
+  await repository.setLockdown(true, owner);
+  const queued = vi.fn();
+  const test = interaction(owner, 'welcome', 'test');
+  Object.assign(test.fixture.options, { getString: () => 'join' });
+  await handleCommand(test.value, { ...state, memberEventsEnabled: true, notifications: { test: queued } as unknown as PostgresNotificationRepository });
+  expect(queued).not.toHaveBeenCalled();
+  expect((await repository.guild(guild))?.revision).toBe(0);
+});
+it('非內部管理員不能藉 Welcome 指令對外排入測試通知', async () => {
+  const state = runtime();
+  await state.core.guilds.setAuthorization(owner, guild, '離線測試 Guild', true);
+  const queued = vi.fn();
+  const test = interaction('100000000000000002', 'welcome', 'test');
+  await handleCommand(test.value, { ...state, notifications: { test: queued } as unknown as PostgresNotificationRepository });
+  expect(queued).not.toHaveBeenCalled();
 });

@@ -3,8 +3,8 @@ import type { ModuleDefinition } from './definition.js';
 import type { ModuleId } from '../../shared/src/models.js';
 
 const descriptions: [ModuleId, string, string, boolean][] = [
-  ['PT-01', '進階事件紀錄', 'Phase 2 訊息建立、編輯、刪除 Audit 與原文政策；其他事件於 Phase 3', true],
-  ['PT-02', '成員通知', '加入與離開通知；Phase 3', false],
+  ['PT-01', '進階事件紀錄', '訊息、成員、語音、角色、頻道及伺服器事件 Audit 與通知；管理操作於 Phase 4', true],
+  ['PT-02', '成員通知', '獨立加入／離開頻道、歡迎文字、頭像及成員總數', true],
   ['PT-03', '設定中心', 'Phase 1 提供 Guild 設定讀取、時區與頻道設定；匯入與重設於 Phase 4', true],
   ['PT-04', '管理員工具', '案件與管理操作；Phase 4', false],
   ['PT-05', '系統監測', 'Phase 1 提供程序狀態；完整監測於 Phase 4', false],
@@ -16,12 +16,12 @@ const descriptions: [ModuleId, string, string, boolean][] = [
 ];
 export const moduleCatalog: ModuleDefinition[] = descriptions.map(([id, name, description, available]) => ({
   id, name, description, available, version: '0.1.0', dependencies: [],
-  requiredPermissions: id === 'PT-03' ? ['Administrator'] : [], requiredGatewayIntents: id === 'PT-01' ? ['Guilds', 'GuildMessages', 'MessageContent'] : ['Guilds'],
+  requiredPermissions: id === 'PT-03' ? ['Administrator'] : id === 'PT-01' || id === 'PT-02' ? ['ViewChannel', 'SendMessages', 'EmbedLinks'] : [], requiredGatewayIntents: id === 'PT-01' ? ['Guilds', 'GuildMessages', 'MessageContent', 'GuildVoiceStates', 'GuildInvites', 'GuildMembers（成員事件另開旗標）'] : id === 'PT-02' ? ['Guilds', 'GuildMembers'] : ['Guilds'],
   configurationSchema: z.object({}).strict(),
-  slashCommands: id === 'PT-01' ? ['logs'] : id === 'PT-03' ? ['config', 'pulse'] : id === 'PT-06' ? ['owner'] : id === 'PT-07' ? ['module'] : [],
+  slashCommands: id === 'PT-01' ? ['logs'] : id === 'PT-02' ? ['welcome'] : id === 'PT-03' ? ['config', 'pulse'] : id === 'PT-06' ? ['owner'] : id === 'PT-07' ? ['module'] : [],
   eventHandlers: {},
-  // Phase 1 管理介面使用 Core Services，沒有個別 Gateway Listener；生命週期仍需做資料庫檢查。
-  async initialize(context) { if (id === 'PT-01') await context.repository.auditHealth(); else await context.repository.health(); },
+  // 共用 Gateway Router 僅綁定一次；每 Guild 模組開關控制接收與發送，不重複掛載 Listener。
+  async initialize(context) { if (id === 'PT-01' || id === 'PT-02') await context.repository.auditHealth(); else await context.repository.health(); },
   async shutdown() {},
   async health(context) { return available && await context.repository.health() ? 'Running' : 'Unavailable'; },
 }));

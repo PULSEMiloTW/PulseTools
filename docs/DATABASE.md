@@ -27,3 +27,5 @@ Bot 啟動不自動 migration。schema 異動應生成並審查 migration，備�
 Phase 2 新增 audit_events、message_snapshots、message_versions；三表啟用 RLS、沒有前端存取政策。後端連線須為表 owner 或具 BYPASSRLS 的受保護角色；不可把這個連線交給瀏覽器。獨立執行角色須另配置僅後端使用的 RLS 政策及 GRANT，不能直接停用 RLS。Guild / eventKey 去重、Guild / Message 複合主鍵、Snapshot 列鎖及版本唯一鍵保護資料一致性。Snapshot 到期刪除時，版本級聯移除。政策保存在既有 Guild JSON 與設定歷史，未建立第二份政策來源。案件、錯誤及 R2 表仍待後續階段。
 
 `test:database` 使用專用空資料庫，檢查 public / drizzle 尚無資料表後才執行 migration；不會清空或刪除既有資料。
+
+Phase 3 新增 server_events 與 notification_outbox，均啟用 RLS。metadata / payload 使用嚴格 Schema，不存訊息原文、邀請碼或 Gateway session 原值。事件／通知交易去重，SKIP LOCKED 取任務、持久化發送狀態與安全失敗代碼。Pending 可於重啟恢復；Sending 結果不明則 Failed / DELIVERY_UNKNOWN，不能自動推定未發送。新增資料按 Guild Audit 期限清理。
