@@ -1,6 +1,6 @@
 # Phase 2 — Audit 基礎
 
-日期：2026-10-09。原始碼、資料庫整合及指令準備完成；真實 Discord 訊息驗收待使用者手動重啟。尚未進入 Phase 3。
+日期：2026-10-09。原始碼、資料庫整合及指令準備完成；使用者已完成訊息接收設定與 PT-01 啟用，原文版本驗收尚待完成。尚未進入 Phase 3。
 
 ## 已實作
 
@@ -26,6 +26,14 @@
 - 六個頂層指令已註冊至既有授權測試 Guild：歡樂Ma屋 1317365273573064714、Pulse Studio HQ 1557255271758303252。未代為啟停 Bot、未修改 .env 或開啟原文捕捉。
 
 ## 使用者手動驗收
+
+2026-10-09 使用者回報「已完成」後，以不讀取原文的資料庫查詢確認：
+
+- 本機 DISCORD_MESSAGE_EVENTS_ENABLED=true。
+- 兩個已授權 Guild 的 PT-01 均 enabled=true、health=Running。
+- Pulse Studio HQ 已收到一筆 message.delete，capture_status=Unavailable；歡樂Ma屋尚無訊息 Audit。
+- 兩個 Guild 的 capture.enabled 均 false，沒有 Snapshot。因此目前只能確認訊息接收設定及缺失原文的刪除事件；尚不能確認實際原文保存、編輯版本、刪除版本或重啟後 Snapshot 持久化。
+- 下一步從下方第 5 項指定測試頻道開始。未擅自替使用者開啟原文保存或發送隱私公告。
 
 1. Discord Developer Portal → PulseTools Application → Bot → Privileged Gateway Intents，啟用 **Message Content Intent** 並 Save Changes。未開啟而程式要求此 Intent 會被 Discord 以 4014 拒絕。
 2. 在本機 .env 新增 `DISCORD_MESSAGE_EVENTS_ENABLED=true`。其他機密不變。
