@@ -1,6 +1,6 @@
 import { and, desc, eq, lte, sql } from 'drizzle-orm';
 import type { Database } from './connection.js';
-import { auditEvents, guilds, messageSnapshots, messageVersions, moduleStates, notificationOutbox, serverEvents } from './schema.js';
+import { auditEvents, guilds, messageSnapshots, messageVersions, moduleStates, notificationOutbox, serverEvents, r2UploadRequests } from './schema.js';
 import { enqueueNotification } from './notification-repository.js';
 import { guildConfigurationSchema } from '../../shared/src/models.js';
 import { messageEventSchema, type CaptureStatus, type MessageEvent } from '../../shared/src/audit.js';
@@ -20,8 +20,14 @@ export class PostgresAuditRepository {
       // 通知輸出頻道排除訊息捕捉，避免無作者資訊的 Embed 更新及刪除造成回授。
       if ([...Object.values(policy.channels), policy.welcome.joinChannel, policy.welcome.leaveChannel].includes(event.channelId)) return 'ignored';
       const now = new Date();
+      let uploadRequestId: string | null = null;
+      if(event.type==='message.delete') {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${event.guildId}),hashtext(${event.messageId}))`);
+        const [upload]=await tx.select({id:r2UploadRequests.id}).from(r2UploadRequests).where(and(eq(r2UploadRequests.guildId,event.guildId),eq(r2UploadRequests.messageId,event.messageId),sql`${r2UploadRequests.deletedAt} is not null`));
+        uploadRequestId=upload?.id??null;
+      }
       const [inserted] = await tx.insert(auditEvents).values({
-        guildId: event.guildId, channelId: event.channelId, messageId: event.messageId,
+        guildId: event.guildId, channelId: event.channelId, messageId: event.messageId, uploadRequestId,
         authorId: event.authorId, eventType: event.type, eventKey: event.eventKey,
         eventAt: event.eventAt ?? event.receivedAt, receivedAt: event.receivedAt,
         timestampSource: event.eventAt ? 'discord' : 'received', captureStatus: 'Unavailable',

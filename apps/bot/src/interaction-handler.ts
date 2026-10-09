@@ -1,3 +1,5 @@
+import { r2Command } from './r2-commands.js';
+import type { R2Service } from '../../../packages/core/src/r2-service.js';
 import { AttachmentBuilder, MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction, type Client } from 'discord.js';
 import type { Core } from '../../../packages/core/src/index.js';
 import type { AuditService } from '../../../packages/core/src/audit-service.js';
@@ -17,7 +19,7 @@ import { errorCategory } from '../../../packages/shared/src/monitoring.js';
 import { readConfigurationAttachment } from './configuration-import.js';
 import { moderationActions } from '../../../packages/shared/src/moderation.js';
 
-export interface BotRuntime { startedAt: Date; client: Client; core: Core; audit?: AuditService; moderation?: ModerationService; errors?: ErrorService; health?: HealthMonitor; recordError?: (error: ErrorInput) => Promise<void>; notifications?: PostgresNotificationRepository; wakeNotifications?: () => void; messageEventsEnabled?: boolean; memberEventsEnabled?: boolean }
+export interface BotRuntime { r2?: R2Service; startedAt: Date; client: Client; core: Core; audit?: AuditService; moderation?: ModerationService; errors?: ErrorService; health?: HealthMonitor; recordError?: (error: ErrorInput) => Promise<void>; notifications?: PostgresNotificationRepository; wakeNotifications?: () => void; messageEventsEnabled?: boolean; memberEventsEnabled?: boolean }
 export async function handleCommand(interaction: ChatInputCommandInteraction, runtime: BotRuntime) {
   const { core, client } = runtime;
   try {
@@ -31,6 +33,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, ru
     let description = '';
     let files: AttachmentBuilder[] = [];
     let preview: ReturnType<typeof pulseEmbed> | undefined;
+    let replyEmbeds: ReturnType<typeof pulseEmbed>[] | undefined;
     const owner = interaction.commandName === 'owner';
     if (owner) {
       core.permissions.requireOwner(actor.userId);
@@ -59,8 +62,15 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, ru
       } else description = `Owner 身分驗證通過。緊急安全模式：${await core.repository.lockdown() ? '已啟用' : '未啟用'}`;
     } else {
       if (interaction.commandName === 'mod') await core.permissions.requireModerator(actor);
+      else if (interaction.commandName === 'r2' && group === 'file') await core.permissions.requireGuild(actor.guildId);
       else await core.permissions.requireAdmin(actor);
-      if (interaction.commandName === 'mod') {
+      if (interaction.commandName === 'r2') {
+        if (!runtime.r2) throw new PulseError('MODULE_UNAVAILABLE');
+        title = '雲端檔案管理';
+        const response = await r2Command(interaction, actor, runtime.r2);
+        if(typeof response === 'string') description=response;
+        else { description=response.description; if(response.links.length) replyEmbeds=response.links.map((link,i)=>pulseEmbed({title:link.name,description:i===0?description:'點擊標題下載；私人連結一小時後到期。',kind:'r2'}).setURL(link.url)); }
+      } else if (interaction.commandName === 'mod') {
         if (!runtime.moderation) throw new PulseError('MODULE_UNAVAILABLE');
         title = '管理案件';
         if (sub === 'notifications') {
@@ -164,7 +174,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, ru
           guild = await core.configuration.replace(actor, { ...guild.configuration, audit: { ...guild.configuration.audit, retentionDays: days }, capture: { ...guild.configuration.capture, retentionDays: days } }, guild.revision);
         }
         if (notificationResult) description = notificationResult;
-        else if (sub === 'recent') description = (await runtime.audit.recent(actor)).map((event) => `${event.eventType} · ${event.entityId} · ${event.captureStatus}\n${formatTimestamp(event.eventAt, guild.configuration.timezone)} · 來源 ${event.timestampSource} · 操作者 ${event.attribution}`).join('\n') || '尚無事件。';
+        else if (sub === 'recent') description = (await runtime.audit.recent(actor)).map((event) => `${event.eventType} · ${event.entityId} · ${event.captureStatus}\n${formatTimestamp(event.eventAt, guild.configuration.timezone)} · 來源 ${event.timestampSource} · 操作者 ${event.attribution}${'uploadRequestId' in event && event.uploadRequestId ? ` · R2 Request ${event.uploadRequestId}` : ''}`).join('\n') || '尚無事件。';
         else if (sub === 'snapshot') {
           const result = await runtime.audit.snapshot(actor, interaction.options.getString('message_id', true));
           description = result ? `訊息：${result.snapshot.messageId}\n狀態：${result.snapshot.captureStatus}\n版本：${result.snapshot.revision}` : 'Unavailable：沒有可用且未過期的原文。';
@@ -227,12 +237,12 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, ru
       // 已授權 Guild 的管理查詢也留存存取歷史，不包含訊息原文或機密。
       await core.repository.recordEvent({ guildId: actor.guildId, actorId: actor.userId, action: 'command.access', details: { command: interaction.commandName, subcommand: sub }, ...receivedTimestamp() });
     }
-    await interaction.editReply({ embeds: [preview ?? pulseEmbed({ title, description })], files, allowedMentions });
+    await interaction.editReply({ embeds: replyEmbeds ?? [preview ?? pulseEmbed({ title, description })], files, allowedMentions });
   } catch (error) {
     const code = safeErrorCode(error);
     console.error(`[PulseTools] 指令失敗：${code}`);
     if (runtime.recordError) {
-      try { await runtime.recordError({ guildId: interaction.guildId, moduleId: interaction.commandName === 'mod' ? 'PT-04' : interaction.commandName === 'error' ? 'PT-08' : null, type: errorCategory(error), code: code as ErrorInput['code'], occurredAt: new Date() }); }
+      try { await runtime.recordError({ guildId: interaction.guildId, moduleId: interaction.commandName === 'mod' ? 'PT-04' : interaction.commandName === 'error' ? 'PT-08' : interaction.commandName === 'r2' ? 'PT-10' : null, type: errorCategory(error), code: code as ErrorInput['code'], occurredAt: new Date() }); }
       catch { console.error('[PulseTools] ERROR_PERSIST_FAILED'); }
     }
     const embed = pulseEmbed({ title: '操作未完成', description: error instanceof PulseError ? error.message : '此操作未完成，請檢查服務狀態。機密與原始錯誤不會公開。', kind: 'error' });

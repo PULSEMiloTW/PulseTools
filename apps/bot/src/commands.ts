@@ -9,6 +9,25 @@ function withModerationActions(builder: Pick<SlashCommandBuilder, 'addSubcommand
   return builder;
 }
 export const commands = [
+  base('r2','雲端檔案上傳管理')
+    .addSubcommand(s=>s.setName('status').setDescription('此 Guild 的 R2 狀態'))
+    .addSubcommand(s=>s.setName('test').setDescription('唯讀檢查指定 Bucket 連線'))
+    .addSubcommand(s=>s.setName('files').setDescription('此 Guild 最近上傳請求'))
+    .addSubcommandGroup(g=>g.setName('file').setDescription('檔案紀錄').addSubcommand(s=>s.setName('info').setDescription('檔案狀態與重新取得下載連結').addStringOption(o=>o.setName('id').setDescription('Request UUID').setRequired(true))))
+    .addSubcommandGroup(g=>g.setName('channel').setDescription('監聽頻道')
+      .addSubcommand(s=>s.setName('list').setDescription('查看監聽頻道'))
+      .addSubcommand(s=>s.setName('add').setDescription('新增監聽頻道').addChannelOption(o=>o.setName('channel').setDescription('Guild 文字頻道').setRequired(true).addChannelTypes(ChannelType.GuildText)))
+      .addSubcommand(s=>s.setName('remove').setDescription('移除監聽頻道').addChannelOption(o=>o.setName('channel').setDescription('Guild 文字頻道').setRequired(true).addChannelTypes(ChannelType.GuildText))))
+    .addSubcommand(s=>s.setName('config').setDescription('查看或更新此 Guild 上傳政策')
+      .addStringOption(o=>o.setName('access').setDescription('下載模式').addChoices({name:'私人：一小時簽署連結',value:'private'},{name:'公開：永久形式 Custom Domain',value:'public'}))
+      .addIntegerOption(o=>o.setName('max_mb').setDescription('每檔上限 MiB').setMinValue(1).setMaxValue(25))
+      .addIntegerOption(o=>o.setName('max_files').setDescription('每則訊息檔案上限').setMinValue(1).setMaxValue(10))
+      .addIntegerOption(o=>o.setName('prompt_seconds').setDescription('確認期限秒數').setMinValue(60).setMaxValue(900))
+      .addStringOption(o=>o.setName('types').setDescription('逗號分隔：png,jpg,webp,gif,pdf,mp4,mp3,zip'))
+      .addStringOption(o=>o.setName('prefix').setDescription('Object 前綴：英數、底線、連字號').setMaxLength(40))
+      .addBooleanOption(o=>o.setName('allow_delete').setDescription('僅永久公開連結可啟用刪除'))
+      .addBooleanOption(o=>o.setName('members').setDescription('是否允許成員提出上傳'))
+      .addChannelOption(o=>o.setName('result_channel').setDescription('結果頻道；預設來源頻道').addChannelTypes(ChannelType.GuildText))),
   base('error', '安全錯誤中心')
     .addSubcommand((s) => s.setName('list').setDescription('查看最近十組安全錯誤').addBooleanOption((o) => o.setName('global').setDescription('Owner 全域診斷')))
     .addSubcommand((s) => s.setName('stats').setDescription('錯誤組數與發生次數').addBooleanOption((o) => o.setName('global').setDescription('Owner 全域診斷')))

@@ -1,0 +1,1 @@
+ALTER TABLE "r2_uploaded_objects" ADD COLUMN "uploaded_at" timestamp with time zone;

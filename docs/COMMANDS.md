@@ -1,4 +1,4 @@
-# Phase 1–3 Slash Commands
+# Phase 1–5 Slash Commands
 
 僅在 DISCORD_COMMAND_GUILD_IDS 指定的 Guild 手動註冊，不自動註冊全域指令。註冊會替換 PulseTools 專用 Application 在指定 Guild 的指令集合，因此不能使用 PulseCore 共用 Application。
 
@@ -6,6 +6,11 @@
 
 | 指令 | 用途 |
 |---|---|
+| /r2 status / test | Guild 策略與唯讀 HeadBucket；test 不上傳物件 |
+| /r2 channel add / remove / list | channel；設定監聽 Guild 文字頻道 |
+| /r2 config | access、max_mb、max_files、types、prefix、allow_delete、members、prompt_seconds、result_channel；無參數只檢視 |
+| /r2 files | Admin 查看本 Guild 最近 25 筆請求 |
+| /r2 file info | id 為 Request UUID；上傳者查自己、Admin 查目前 Guild；重新取得一小時私人連結 |
 | /logs status / recent | 本 Guild 紀錄政策與最近十筆事件中繼資料 |
 | /logs snapshot | message_id 查閱可用原文與最近十個版本；權限及保存政策限制 |
 | /logs event set | type / enabled 開關訊息事件 |

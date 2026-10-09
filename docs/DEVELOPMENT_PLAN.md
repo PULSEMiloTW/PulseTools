@@ -27,4 +27,4 @@
 
 ## 驗收紀錄
 
-Phase 1 基礎驗收與 Phase 2 原文核心流程已有實際紀錄（PHASE_1_REPORT.md、PHASE_2_REPORT.md）。Phase 3 代表性真實事件與通知驗收通過，證據及未逐項實測的範圍見 PHASE_3_REPORT.md。Phase 4 原始碼、自動測試與隔離 PostgreSQL 驗證完成，使用者已於 2026-10-09 回報手動驗收通過（包含管理操作、Lockdown、錯誤中心與重啟持久化），見 PHASE_4_REPORT.md。Phase 5–7 尚未開始，不將基礎版本宣稱為完整產品。
+Phase 1 基礎驗收與 Phase 2 原文核心流程已有實際紀錄（PHASE_1_REPORT.md、PHASE_2_REPORT.md）。Phase 3 代表性真實事件與通知驗收通過，證據及未逐項實測的範圍見 PHASE_3_REPORT.md。Phase 4 原始碼、自動測試與隔離 PostgreSQL 驗證完成，使用者已於 2026-10-09 回報手動驗收通過（包含管理操作、Lockdown、錯誤中心與重啟持久化），見 PHASE_4_REPORT.md。Phase 5 R2 已進入實作與驗證，真實上傳待驗收（PHASE_5_REPORT.md）；Phase 6–7 尚未開始，不將基礎版本宣稱為完整產品。

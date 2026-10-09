@@ -1,0 +1,1 @@
+ALTER TABLE "audit_events" ADD COLUMN "upload_request_id" uuid;

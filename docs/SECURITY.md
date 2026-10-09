@@ -18,3 +18,5 @@ OAuth2 Session / CSRF 與 R2 安全串流尚未實作，不能對外部署或宣
 Phase 3 通知只包含嚴格 Schema 的中繼資料，不複製訊息原文至 Outbox；不保存 Gateway session 原值或邀請碼。新增兩表啟用 RLS。通知目標只能由授權管理者選擇本 Guild 頻道，發送前重新檢查授權、模組與路由；所有 mention 關閉。Preview 不公開，test 需主動指令且經 Lockdown 檢查。無法確認的發送結果記為 DELIVERY_UNKNOWN，不擅自重送；原文依然只透過授權 Snapshot 存取。
 
 Phase 4 案件與備註以複合 FK 保護 Guild 隔離，查閱仍經 Core 內部／原生權限檢查。處分先保存 Pending，再驗證最新權限與角色階級；結果不明時不重試。REST 自動 500／timeout 重試關閉。管理原因與備註不進公開通知，錯誤不保存第三方原文或 Stack Trace。JSON 匯入具來源、期限、串流大小、嚴格 Schema、Guild 頻道及版本檢查，不能繞過 capture 的明確告知流程。
+
+PT-10 僅由 Discord Attachment 偵測提出詢問；不接受使用者任意 URL。確認核對 Guild／來源頻道／詢問 ID／Request ID／Actor，原子 claim 防重。下載來源只允許 Discord HTTPS CDN 附件路徑、禁止 redirect，限制時間與實際串流大小；檔案類型以內容探測與副檔名／MIME 一致性驗證。私人連結有效一小時，持有者可下載，不能作為永久入口；原訊息保留。短期連結不存入資料庫或 logs。Object 結果不明時不盲目重傳，Unknown 需人工核對；一般暫存清理與強制終止的限制見 R2_STORAGE.md。

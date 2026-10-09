@@ -33,6 +33,7 @@ export const systemSettings = pgTable('system_settings', {
   key: text('key').primaryKey(), enabled: boolean('enabled').notNull(), updatedAt: utc('updated_at'),
 });
 export const auditEvents = pgTable('audit_events', {
+  uploadRequestId: uuid('upload_request_id'),
   id: uuid('id').defaultRandom().primaryKey(), guildId: text('guild_id').notNull().references(() => guilds.id),
   channelId: text('channel_id').notNull(), messageId: text('message_id').notNull(), authorId: text('author_id'),
   eventType: text('event_type').notNull(), eventKey: text('event_key').notNull(),
@@ -96,3 +97,19 @@ export const notificationOutbox = pgTable('notification_outbox', {
   attempts: integer('attempts').notNull().default(0), nextAttemptAt: utc('next_attempt_at'), leaseAt: timestamp('lease_at', { withTimezone: true, mode: 'date' }),
   sentMessageId: text('sent_message_id'), errorCode: text('error_code'), createdAt: utc('created_at'), updatedAt: utc('updated_at'), expiresAt: utc('expires_at'),
 }, (table) => [uniqueIndex('notification_deduplication').on(table.guildId, table.moduleId, table.eventKey), index('notification_pending').on(table.status, table.nextAttemptAt), check('notification_status', sql`${table.status} in ('Pending','Sending','Sent','Failed','Cancelled')`)]).enableRLS();
+
+export const r2GuildSettings = pgTable('r2_guild_settings', {
+  guildId: text('guild_id').primaryKey().references(() => guilds.id), settings: jsonb('settings').$type<import('../../shared/src/r2.js').R2Settings>().notNull(), updatedAt: utc('updated_at'),
+}).enableRLS();
+export const r2UploadRequests = pgTable('r2_upload_requests', {
+  id: uuid('id').defaultRandom().primaryKey(), guildId: text('guild_id').notNull().references(() => guilds.id), channelId: text('channel_id').notNull(), messageId: text('message_id').notNull(), uploaderId: text('uploader_id').notNull(),
+  attachments: jsonb('attachments').$type<import('../../shared/src/r2.js').R2Attachment[]>().notNull(), settings: jsonb('settings').$type<import('../../shared/src/r2.js').R2Settings>().notNull(),
+  status: text('status').$type<import('../../shared/src/r2.js').R2State>().notNull().default('Pending'), choice: text('choice'), promptId: text('prompt_id'), resultId: text('result_id'), actorId: text('actor_id'), errorCode: text('error_code'),
+  createdAt: utc('created_at'), expiresAt: utc('expires_at'), startedAt: timestamp('started_at', { withTimezone: true, mode: 'date' }), completedAt: timestamp('completed_at', { withTimezone: true, mode: 'date' }), deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
+}, t => [uniqueIndex('r2_request_message').on(t.guildId,t.messageId), uniqueIndex('r2_request_guild_id').on(t.guildId,t.id), index('r2_request_time').on(t.guildId,t.createdAt), check('r2_request_status',sql`${t.status} in ('Pending','Uploading','Uploaded','Completed','Cancelled','Expired','Failed','PartiallyCompleted')`)]).enableRLS();
+export const r2UploadedObjects = pgTable('r2_uploaded_objects', {
+  id: uuid('id').primaryKey(), guildId: text('guild_id').notNull(), requestId: uuid('request_id').notNull(), attachmentId: text('attachment_id').notNull(), filename: text('filename').notNull(), key: text('object_key').notNull(), contentType: text('content_type').notNull(), size: integer('size').notNull(), status: text('status').$type<'Uploading'|'Uploaded'|'Unknown'>().notNull(), createdAt: utc('created_at'), uploadedAt: timestamp('uploaded_at',{withTimezone:true,mode:'date'}),
+}, t => [foreignKey({ columns:[t.guildId,t.requestId],foreignColumns:[r2UploadRequests.guildId,r2UploadRequests.id] }), uniqueIndex('r2_object_attachment').on(t.guildId,t.requestId,t.attachmentId), uniqueIndex('r2_object_key').on(t.key)]).enableRLS();
+export const r2UploadEvents = pgTable('r2_upload_events', {
+  id: uuid('id').defaultRandom().primaryKey(), guildId: text('guild_id').notNull(), requestId: uuid('request_id').notNull(), status: text('status').notNull(), code: text('code'), occurredAt: utc('occurred_at'),
+}, t => [foreignKey({ columns:[t.guildId,t.requestId],foreignColumns:[r2UploadRequests.guildId,r2UploadRequests.id] }), index('r2_event_time').on(t.guildId,t.occurredAt)]).enableRLS();

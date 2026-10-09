@@ -25,3 +25,5 @@ Phase 2 額外驗證 EventRouter 佇列、重試、停止、Gateway 缺失欄位
 Phase 3 加入成員／語音差異、通知 Embed、mention 防護、Worker 重入／未就緒／取消、Discord 限流與權限失敗、成功發送後 DB 寫回失敗等測試。PostgreSQL 測試包含 Server / Outbox 同交易、RLS、路由、去重、Pending／Sent 持久化、Sending 不明狀態恢復、重試上限及清理。保存期限案例含多次遠端 DB round trip，單案例時限 15 秒，不擴大全部離線測試時限。Phase 3 真實 Gateway／通知驗收見 PHASE_3_REPORT.md；測試 transport 不對 Discord 發送訊息。
 
 Phase 4 加入 Moderator 內部授權／原生權限邊界、階級／目標拒絕、確認與禁言期限、外部執行前案件保存、失敗／Unknown／重複指令、健康真實數值／Degraded／採樣生命週期、錯誤查閱／全域隔離及附件匯入限制。隔離 PostgreSQL 驗證案件與備註複合 FK、並行去重、關聯解除、Pending 恢復、四表 RLS、管理通知開關、錯誤聚合／通知／確認及健康期限清理。測試 transport 不執行真實處分；真實驗收與已知限制見 PHASE_4_REPORT.md。
+
+Phase 5 使用 mock SDK／Discord／fetch，測試確認前不下載、取消、按鈕授權與對象核對、並行確認、多附件部分失敗、結果與刪除順序、最新政策撤銷、過期、實際內容探測、限量串流、Head 比對及暫存清理。隔離 PostgreSQL 驗證四表 RLS、複合 FK、Guild 設定與檔案隔離、claim 去重、過期、重啟 Unknown 及 Audit 刪除事件先後到關聯。真實驗收見 PHASE_5_REPORT.md；SDK mock 不寫入 R2。

@@ -43,6 +43,27 @@
       "when": 1791546929930,
       "tag": "0005_pink_madrox",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791550742422,
+      "tag": "0006_dark_eternals",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791550999681,
+      "tag": "0007_right_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791551304232,
+      "tag": "0008_hard_lorna_dane",
+      "breakpoints": true
     }
   ]
 }

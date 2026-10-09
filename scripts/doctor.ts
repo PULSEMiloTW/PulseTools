@@ -13,6 +13,7 @@ async function doctor() {
     await repository.health();
     await repository.auditHealth();
     await repository.managementHealth();
+    await repository.r2Health();
     const guilds = await repository.authorizedGuilds();
     await repository.lockdown();
     console.info(`PostgreSQL 與基礎資料表正常；已授權 Guild 數：${guilds.length}。`);

@@ -405,3 +405,40 @@ it('撤銷 Guild 不刪除持久設定但立即拒絕讀取與新事件', async 
   expect((await db.select().from(guilds).where(eq(guilds.id, guildA)))[0]?.configuration.timezone).toBe('UTC');
   expect(await auditRepository.ingest(messageEvent({ eventKey: 'revoked' }))).toBe('ignored');
 });
+
+it('R2 四表 RLS、設定與請求隔離、並行去重及重啟安全恢復', async () => {
+  const { PostgresR2Store } = await import('../packages/database/src/r2-repository.js');
+  const { r2SettingsSchema } = await import('../packages/shared/src/r2.js');
+  const store = new PostgresR2Store(db), settings=r2SettingsSchema.parse({channels:['300000000000000080']});
+  await store.setSettings(guildA,settings); expect((await store.settings(guildB)).channels).not.toContain('300000000000000080');
+  const input={guildId:guildA,channelId:'300000000000000080',messageId:'400000000000000080',uploaderId:owner,attachments:[{id:'500000000000000080',name:'test.png',size:100,contentType:'image/png'}],settings};
+  const offered=await Promise.all([store.create(input),store.create(input)]);expect(offered.filter(Boolean)).toHaveLength(1);const request=offered.find(Boolean)!;
+  await store.prompt(guildA,request.id,'400000000000000081');expect(await store.get(guildB,request.id)).toBeUndefined();
+  const claims=await Promise.all([store.claim(guildA,request.id,'keep',owner),store.claim(guildA,request.id,'keep',owner)]);expect(claims.filter(Boolean)).toHaveLength(1);
+  const object={id:randomUUID(),guildId:guildA,requestId:request.id,attachmentId:'500000000000000080',filename:'test.png',key:`${guildA}/test/${randomUUID()}`,size:100,contentType:'image/png',status:'Uploading' as const};await store.object(object);
+  await expect(store.object({...object,id:randomUUID(),guildId:guildB})).rejects.toThrow();
+  await store.recover();expect((await store.get(guildA,request.id))?.status).toBe('PartiallyCompleted');expect((await store.objects(guildA,request.id))[0]?.status).toBe('Unknown');expect(await store.objects(guildB,request.id)).toHaveLength(0);
+  expect(await store.claim(guildA,request.id,'keep',owner)).toBeUndefined();
+  const expired=(await store.create({...input,messageId:'400000000000000082'}))!;await db.update(schema.r2UploadRequests).set({expiresAt:new Date(Date.now()-1000)}).where(eq(schema.r2UploadRequests.id,expired.id));expect(await store.claim(guildA,expired.id,'keep',owner)).toBeUndefined();await store.expire();expect((await store.get(guildA,expired.id))?.status).toBe('Expired');
+  const rls=await db.execute<{relrowsecurity:boolean}>(sql`select relrowsecurity from pg_class where relnamespace=current_schema()::regnamespace and relname in ('r2_guild_settings','r2_upload_requests','r2_uploaded_objects','r2_upload_events')`);expect(rls.rows).toHaveLength(4);expect(rls.rows.every(r=>r.relrowsecurity)).toBe(true);
+});
+
+it('R2 刪除確認可關聯先到／後到的實際 Audit 事件，不改原文政策', async () => {
+  const { PostgresR2Store } = await import('../packages/database/src/r2-repository.js');
+  const { r2SettingsSchema } = await import('../packages/shared/src/r2.js');
+  const store=new PostgresR2Store(db),audit=new PostgresAuditRepository(db);
+  await core.guilds.setAuthorization(owner,guildA,'R2 測試',true);
+  await repository.setLockdown(false,owner);
+  await core.modules.setEnabled(actor(guildA),'PT-01',true);
+  const guild=await core.configuration.view(actor(guildA));
+  await core.configuration.replace(actor(guildA),{...guild.configuration,channels:{},audit:{...guild.configuration.audit,enabledEvents:['message.delete']}},guild.revision);
+  for(const first of [true,false]) {
+    const messageId=first?'400000000000000085':'400000000000000086';
+    const r=(await store.create({guildId:guildA,channelId:'300000000000000085',messageId,uploaderId:owner,attachments:[],settings:r2SettingsSchema.parse({})}))!;
+    const event:MessageEvent={guildId:guildA,channelId:r.channelId,messageId,authorId:null,type:'message.delete',eventKey:`message.delete:${messageId}:`,content:null,partial:true,receivedAt:new Date(),eventAt:null};
+    if(first) await audit.ingest(event);
+    await store.state(guildA,r.id,'Completed',undefined,undefined,new Date());
+    if(!first) await audit.ingest(event);
+    const [record]=await db.select().from(schema.auditEvents).where(and(eq(schema.auditEvents.guildId,guildA),eq(schema.auditEvents.messageId,messageId)));expect(record?.uploadRequestId).toBe(r.id);
+  }
+});

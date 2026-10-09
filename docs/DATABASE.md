@@ -31,3 +31,5 @@ Phase 2 新增 audit_events、message_snapshots、message_versions；三表啟�
 Phase 3 新增 server_events 與 notification_outbox，均啟用 RLS。metadata / payload 使用嚴格 Schema，不存訊息原文、邀請碼或 Gateway session 原值。事件／通知交易去重，SKIP LOCKED 取任務、持久化發送狀態與安全失敗代碼。Pending 可於重啟恢復；Sending 結果不明則 Failed / DELIVERY_UNKNOWN，不能自動推定未發送。新增資料按 Guild Audit 期限清理。
 
 Phase 4 新增 moderation_cases、moderation_notes、error_records、health_samples（0004／0005），四表 RLS 無匿名政策。案件以 Guild／Interaction 去重，關聯案件與備註具 Guild／Case 複合 FK；原始案件不被解除處分覆寫。健康樣本保存 30 天，案件與安全錯誤保留歷史。錯誤以五分鐘窗合併，保存安全代碼與確認者；不保存原始 Stack Trace。管理通知與錯誤通知沿用 Outbox。此階段不更改既有 Guild 設定或自動啟用模組。
+
+Phase 5 新增 r2_guild_settings、r2_upload_requests、r2_uploaded_objects、r2_upload_events，均啟用 RLS，沒有匿名政策。複合 Guild／Request FK、Guild／Message 去重及唯一 Object Key；請求狀態 SQL check 與原子 Pending claim。0006 先建立複合唯一索引再建立 FK；0007 為 audit_events 加入已確認 R2 刪除的 upload_request_id；0008 新增物件 uploaded_at。時間均 UTC，不保存附件 URL、簽署 URL 或 R2 憑證。

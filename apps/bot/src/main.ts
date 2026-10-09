@@ -1,3 +1,7 @@
+import { PostgresR2Store } from '../../../packages/database/src/r2-repository.js';
+import { R2StorageService } from '../../../packages/core/src/r2-storage.js';
+import { R2Service } from '../../../packages/core/src/r2-service.js';
+import { DiscordR2Transport, r2Button } from './r2-transport.js';
 import { config } from 'dotenv';
 import type { PoolClient } from 'pg';
 import { ActivityType, Client, Events, GatewayIntentBits, Partials, PermissionFlagsBits } from 'discord.js';
@@ -38,7 +42,8 @@ async function main() {
   if (env.DISCORD_MESSAGE_EVENTS_ENABLED) intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent);
   if (env.DISCORD_MEMBER_EVENTS_ENABLED) intents.push(GatewayIntentBits.GuildMembers);
   const client = new Client({ intents, rest: { retries: 0 }, partials: [Partials.Message, Partials.Channel, Partials.GuildMember], allowedMentions: { parse: [], repliedUser: false } });
-  const core = createCore(repository, env.DISCORD_OWNER_ID, env.DISCORD_MESSAGE_EVENTS_ENABLED, env.DISCORD_MEMBER_EVENTS_ENABLED);
+  const r2Storage = new R2StorageService(env);
+  const core = createCore(repository, env.DISCORD_OWNER_ID, env.DISCORD_MESSAGE_EVENTS_ENABLED, env.DISCORD_MEMBER_EVENTS_ENABLED, r2Storage.configured);
   const auditRepository = new PostgresAuditRepository(db);
   const serverRepository = new PostgresServerEventRepository(db);
   const notifications = new PostgresNotificationRepository(db);
@@ -51,6 +56,8 @@ async function main() {
   const errors = new ErrorService(core, monitoring);
   const health = new HealthMonitor(core, client, startedAt, monitoring, notifications);
   const recordError = async (input: ErrorInput) => { await monitoring.record(input); };
+  const r2Store = new PostgresR2Store(db);
+  const r2 = new R2Service(core, r2Store, r2Storage, new DiscordR2Transport(client), async (guildId) => { await recordError({guildId,moduleId:"PT-10",type:"R2",code:"INTERNAL_ERROR",occurredAt:new Date()}); });
   const backgroundError = (code: ErrorInput['code'], type: ErrorInput['type'], moduleId: ErrorInput['moduleId'] = null) => {
     console.error(`[PulseTools] ${code}`);
     if (shuttingDown) return;
@@ -81,6 +88,7 @@ async function main() {
   let retention: ReturnType<typeof setInterval> | undefined;
   let delivery: ReturnType<typeof setInterval> | undefined;
   let sampling: ReturnType<typeof setInterval> | undefined;
+  let r2Expiry: ReturnType<typeof setInterval> | undefined;
   const commandsInFlight = new Set<Promise<void>>();
   const backgroundInFlight = new Set<Promise<void>>();
   // 保留連線持有 advisory lock，避免同一資料庫啟動兩個 Bot 並重複處理事件。
@@ -88,11 +96,13 @@ async function main() {
   const shutdown = async (exitCode: number) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    r2Storage.cancelUploads();
     const timer = setTimeout(() => process.exit(exitCode || 1), 10000).unref();
     client.destroy();
     if (retention) clearInterval(retention);
     if (delivery) clearInterval(delivery);
     if (sampling) clearInterval(sampling);
+    if (r2Expiry) clearInterval(r2Expiry);
     await router.shutdown();
     await serverRouter.shutdown();
     await Promise.allSettled([...commandsInFlight]);
@@ -100,6 +110,7 @@ async function main() {
     await health.shutdown();
     await Promise.allSettled([...backgroundInFlight]);
     await core.modules.shutdown();
+    r2Storage.destroy();
     lease?.release();
     await pool.end();
     clearTimeout(timer);
@@ -119,6 +130,7 @@ async function main() {
     await moderationRepository.health();
     await moderationRepository.recover();
     await monitoring.health();
+    if (r2Storage.configured && env.DISCORD_MESSAGE_EVENTS_ENABLED) { try { await r2Store.recover(); } catch { console.error('[PulseTools] R2_RECOVERY_FAILED；其他模組繼續初始化。'); } }
     await auditRepository.prune();
     let pruning = false;
     retention = setInterval(() => {
@@ -130,7 +142,7 @@ async function main() {
     if (env.DISCORD_MESSAGE_EVENTS_ENABLED) bindMessageEvents(client, core, router);
     bindServerEvents(client, core, serverRouter);
     const capabilities = optionalCapabilities(env);
-    console.info(`[PulseTools] 選用設定：R2 ${capabilities.r2Configured ? '已設定（模組尚未開放）' : '未設定'}；OAuth ${capabilities.oauthConfigured ? '已設定（Phase 6 開放）' : '未設定'}。`);
+    console.info(`[PulseTools] 選用設定：R2 ${capabilities.r2Configured ? '已設定（需手動啟用 PT-10 與監聽頻道）' : '未設定'}；OAuth ${capabilities.oauthConfigured ? '已設定（Phase 6 開放）' : '未設定'}。`);
     const presence = () => client.user?.setPresence({ status: 'online', activities: [{ name: 'Powered by Pulse Studio', type: ActivityType.Watching }] });
     client.once(Events.ClientReady, (ready) => {
       if (ready.application.id !== env.DISCORD_CLIENT_ID) {
@@ -141,18 +153,37 @@ async function main() {
       wake();
       const sample = () => { void health.poll(env.DISCORD_OWNER_ID).catch(() => backgroundError('HEALTH_FAILED', 'Database', 'PT-05')); };
       sampling = setInterval(sample, 60000).unref();
+      let expiring = false;
+      if(r2Storage.configured && env.DISCORD_MESSAGE_EVENTS_ENABLED) r2Expiry=setInterval(()=>{
+        if(expiring || shuttingDown) return; expiring=true;
+        const operation=r2.expire().catch(()=>backgroundError('INTERNAL_ERROR','R2','PT-10')).finally(()=>{expiring=false;});
+        backgroundInFlight.add(operation); void operation.finally(()=>backgroundInFlight.delete(operation));
+      },15000).unref();
       sample();
       console.info(`[PulseTools] Discord 已連線 · Bot ${ready.user.id} · Guild ${ready.guilds.cache.size} · ${new Date().toISOString()}`);
     });
     client.on(Events.ShardResume, presence);
+    client.on(Events.MessageCreate, (message) => {
+      if (shuttingDown || !r2Storage.configured || !message.guildId || !message.guild || message.author.bot || message.webhookId || !message.attachments.size) return;
+      const operation = (async () => {
+        try {
+          const me = await message.guild!.members.fetchMe({force:true});
+          await r2.offer({guildId:message.guildId!,channelId:message.channelId,messageId:message.id,uploaderId:message.author.id,attachments:message.attachments.map(f=>({id:f.id,name:f.name,size:f.size,contentType:f.contentType}))},'permissionsFor' in message.channel && (message.channel.permissionsFor(me)?.has(PermissionFlagsBits.ManageMessages)??false));
+        } catch { /* 未授權／未啟用不建立業務紀錄；不輸出附件 URL。 */ }
+      })();
+      backgroundInFlight.add(operation); void operation.finally(()=>backgroundInFlight.delete(operation));
+    });
     client.on(Events.InteractionCreate, (interaction) => {
+      if (!shuttingDown && interaction.isButton() && interaction.customId.startsWith('r2:')) {
+        const operation = r2Button(interaction,r2); commandsInFlight.add(operation); void operation.finally(()=>commandsInFlight.delete(operation));
+      }
       if (!shuttingDown && interaction.isAutocomplete()) {
         const operation = handleModerationAutocomplete(interaction, moderation);
         commandsInFlight.add(operation);
         void operation.finally(() => commandsInFlight.delete(operation));
       }
       if (!shuttingDown && interaction.isChatInputCommand()) {
-        const operation = handleCommand(interaction, { startedAt, client, core, audit, moderation, errors, health, recordError, notifications, wakeNotifications: wake, messageEventsEnabled: env.DISCORD_MESSAGE_EVENTS_ENABLED, memberEventsEnabled: env.DISCORD_MEMBER_EVENTS_ENABLED });
+        const operation = handleCommand(interaction, { startedAt, client, core, audit, moderation, errors, health, r2, recordError, notifications, wakeNotifications: wake, messageEventsEnabled: env.DISCORD_MESSAGE_EVENTS_ENABLED, memberEventsEnabled: env.DISCORD_MEMBER_EVENTS_ENABLED });
         commandsInFlight.add(operation);
         void operation.finally(() => commandsInFlight.delete(operation));
       }

@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { Database } from './connection.js';
-import { auditEvents, configurationHistory, guilds, moduleStates, notificationOutbox, operators, securityEvents, serverEvents, systemSettings, moderationCases, errorRecords, healthSamples } from './schema.js';
+import { auditEvents, configurationHistory, guilds, moduleStates, notificationOutbox, operators, securityEvents, serverEvents, systemSettings, moderationCases, errorRecords, healthSamples, r2UploadRequests, r2UploadedObjects, r2UploadEvents, r2GuildSettings } from './schema.js';
 import type { GuildConfiguration, GuildRecord, InternalRole, ModuleState, SecurityEvent } from '../../shared/src/models.js';
 import { PulseError } from '../../shared/src/errors.js';
 import { receivedTimestamp } from '../../shared/src/timestamp.js';
@@ -9,6 +9,7 @@ export interface FoundationRepository {
   health(): Promise<boolean>;
   auditHealth(): Promise<boolean>;
   managementHealth(): Promise<boolean>;
+  r2Health(): Promise<boolean>;
   guild(id: string): Promise<GuildRecord | undefined>;
   authorizedGuilds(): Promise<GuildRecord[]>;
   setGuildAuthorization(id: string, name: string, authorized: boolean, actorId: string): Promise<void>;
@@ -27,6 +28,13 @@ function event(guildId: string | null, actorId: string, action: string, details:
 export class PostgresRepository implements FoundationRepository {
   constructor(private readonly db: Database) {}
   async health() { await this.db.execute(sql`select 1`); return true; }
+  async r2Health() {
+    await this.db.select({id:r2UploadRequests.id}).from(r2UploadRequests).limit(1);
+    await this.db.select({id:r2UploadedObjects.id}).from(r2UploadedObjects).limit(1);
+    await this.db.select({id:r2UploadEvents.id}).from(r2UploadEvents).limit(1);
+    await this.db.select({id:r2GuildSettings.guildId}).from(r2GuildSettings).limit(1);
+    return true;
+  }
   async managementHealth() {
     await this.db.select({ id: moderationCases.id }).from(moderationCases).limit(1);
     await this.db.select({ id: errorRecords.id }).from(errorRecords).limit(1);

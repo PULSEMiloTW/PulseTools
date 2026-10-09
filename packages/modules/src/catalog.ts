@@ -12,16 +12,16 @@ const descriptions: [ModuleId, string, string, boolean][] = [
   ['PT-07', '模組管理', '必要 Core 模組管理保持啟用；此為可選管理介面', true],
   ['PT-08', '錯誤追蹤', '持久錯誤分類、五分鐘聚合、通知與確認', true],
   ['PT-09', '網頁管理後台', 'OAuth2 與 Dashboard；Phase 6', false],
-  ['PT-10', '雲端檔案管理', 'R2 確認、上傳、連結與安全刪除；Phase 5', false],
+  ['PT-10', '雲端檔案管理', 'R2 確認、附件驗證、持久上傳與下載連結', true],
 ];
 export const moduleCatalog: ModuleDefinition[] = descriptions.map(([id, name, description, available]) => ({
   id, name, description, available, version: '0.1.0', dependencies: [],
-  requiredPermissions: id === 'PT-03' ? ['Administrator'] : id === 'PT-04' ? ['ModerateMembers', 'KickMembers', 'BanMembers', 'ManageMessages（依操作逐項檢查）'] : ['PT-01','PT-02','PT-08'].includes(id) ? ['ViewChannel', 'SendMessages', 'EmbedLinks'] : [], requiredGatewayIntents: id === 'PT-01' ? ['Guilds', 'GuildMessages', 'MessageContent', 'GuildVoiceStates', 'GuildInvites', 'GuildMembers（成員事件另開旗標）'] : id === 'PT-02' ? ['Guilds', 'GuildMembers'] : ['Guilds'],
+  requiredPermissions: id === 'PT-03' ? ['Administrator'] : id === 'PT-04' ? ['ModerateMembers', 'KickMembers', 'BanMembers', 'ManageMessages（依操作逐項檢查）'] : ['PT-01','PT-02','PT-08','PT-10'].includes(id) ? ['ViewChannel', 'SendMessages', 'EmbedLinks'] : [], requiredGatewayIntents: id === 'PT-10' ? ['Guilds','GuildMessages','MessageContent'] : id === 'PT-01' ? ['Guilds', 'GuildMessages', 'MessageContent', 'GuildVoiceStates', 'GuildInvites', 'GuildMembers（成員事件另開旗標）'] : id === 'PT-02' ? ['Guilds', 'GuildMembers'] : ['Guilds'],
   configurationSchema: z.object({}).strict(),
-  slashCommands: id === 'PT-01' ? ['logs'] : id === 'PT-02' ? ['welcome'] : id === 'PT-03' ? ['config', 'pulse'] : id === 'PT-04' ? ['mod'] : id === 'PT-05' ? ['system'] : id === 'PT-06' ? ['owner'] : id === 'PT-07' ? ['module'] : id === 'PT-08' ? ['error'] : [],
+  slashCommands: id === 'PT-01' ? ['logs'] : id === 'PT-02' ? ['welcome'] : id === 'PT-03' ? ['config', 'pulse'] : id === 'PT-04' ? ['mod'] : id === 'PT-05' ? ['system'] : id === 'PT-06' ? ['owner'] : id === 'PT-07' ? ['module'] : id === 'PT-08' ? ['error'] : id === 'PT-10' ? ['r2'] : [],
   eventHandlers: {},
   // 共用 Gateway Router 僅綁定一次；每 Guild 模組開關控制接收與發送，不重複掛載 Listener。
-  async initialize(context) { if (id === 'PT-01' || id === 'PT-02') await context.repository.auditHealth(); else if (['PT-04','PT-05','PT-08'].includes(id)) await context.repository.managementHealth(); else await context.repository.health(); },
+  async initialize(context) { if (id === 'PT-10') await context.repository.r2Health(); else if (id === 'PT-01' || id === 'PT-02') await context.repository.auditHealth(); else if (['PT-04','PT-05','PT-08'].includes(id)) await context.repository.managementHealth(); else await context.repository.health(); },
   async shutdown() {},
-  async health(context) { return available && await (['PT-04','PT-05','PT-08'].includes(id) ? context.repository.managementHealth() : id === 'PT-01' || id === 'PT-02' ? context.repository.auditHealth() : context.repository.health()) ? 'Running' : 'Unavailable'; },
+  async health(context) { return available && await (id === 'PT-10' ? context.repository.r2Health() : ['PT-04','PT-05','PT-08'].includes(id) ? context.repository.managementHealth() : id === 'PT-01' || id === 'PT-02' ? context.repository.auditHealth() : context.repository.health()) ? 'Running' : 'Unavailable'; },
 }));
