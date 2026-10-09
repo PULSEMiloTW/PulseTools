@@ -47,7 +47,8 @@ GuildVoiceStates / GuildInvites 隨新版啟動載入。邀請事件另需對來
 
 - 使用者已手動載入新版。歡樂Ma屋的真實 `voice.join`、`voice.switch`、`voice.leave` 各一筆已保存；對應三筆 PT-01 Outbox 均為 `Sent`、`isTest=false`，無錯誤碼。使用者確認操作完成，事件入庫到自動通知的完整流程通過。
 - 歡樂Ma屋 PT-02 加入與離開測試通知各一筆、Pulse Studio HQ PT-01 訊息測試通知一筆均為 `Sent`，無錯誤碼。測試通知不視為真實成員或訊息事件。
-- 歡樂Ma屋另有一筆真實 `channel.update` 紀錄。真實成員加入／離開、角色事件及重啟後通知持久化仍待手動驗證，尚未宣稱 Phase 3 全部驗收完成。
+- 後續驗收：歡樂Ma屋真實 `member.join`、`member.leave` 各一筆，兩種事件的 PT-01 與 PT-02 通知均為 `Sent`；另有兩筆 `member.role.add` 與成功的 PT-01 通知。Pulse Studio HQ 真實 `member.join` 一筆，其 PT-01 與 PT-02 通知均為 `Sent`。兩個 Guild 各有真實 `invite.create`、`invite.delete` 與成功的 PT-01 通知；上述均 `isTest=false`、無錯誤碼。
+- 歡樂Ma屋另有一筆真實 `channel.update` 紀錄。角色本身建立／更新／刪除及重啟後設定與通知持久化仍待手動驗證，尚未宣稱 Phase 3 全部驗收完成。
 - `direction` 在 Discord 選單顯示為「加入」與「離開」；下方 `join` / `leave` 為內部值。操作時應從下拉選單選取，不能直接貼上內部值當成已選定的選項。
 
 1. Developer Portal → PulseTools → Bot → Privileged Gateway Intents，開啟 **Server Members Intent** 並儲存。保持 Message Content Intent 啟用。
