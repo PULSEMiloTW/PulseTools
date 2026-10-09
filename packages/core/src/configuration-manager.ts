@@ -25,6 +25,11 @@ export class ConfigurationManager {
     const guild = await this.view(actor);
     return this.replace(actor, { ...guild.configuration, timezone }, guild.revision);
   }
+  async reset(actor: Actor, expectedRevision: number, confirmed: boolean) {
+    await this.permissions.requireAdmin(actor, true);
+    if (confirmed !== true) throw new PulseError('INVALID_INPUT');
+    return this.replace(actor, guildConfigurationSchema.parse({}), expectedRevision);
+  }
   async setCapture(actor: Actor, capture: GuildConfiguration['capture'], confirmed: boolean, expectedRevision?: number) {
     await this.permissions.requireAdmin(actor, true);
     const guild = await this.view(actor);

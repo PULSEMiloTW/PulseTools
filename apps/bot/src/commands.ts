@@ -65,6 +65,9 @@ export const commands = [
         .addStringOption((o) => o.setName('role').setDescription('內部角色').setRequired(true).addChoices({ name: '授權管理員', value: 'admin' }, { name: '管理員工具操作員', value: 'moderator' })))
       .addSubcommand((s) => s.setName('remove').setDescription('撤銷目前 Guild 操作員').addUserOption((o) => o.setName('user').setDescription('成員').setRequired(true)))),
   base('config', 'Guild 設定中心')
+    .addSubcommand((s) => s.setName('reset').setDescription('重設目前 Guild 設定；清空通知路由並關閉原文保存')
+      .addIntegerOption((o) => o.setName('revision').setDescription('先用 config view 查閱目前設定版本').setRequired(true).setMinValue(0))
+      .addBooleanOption((o) => o.setName('confirm').setDescription('確認重設設定；歷史紀錄與模組開關保留').setRequired(true)))
     .addSubcommand((s) => s.setName('view').setDescription('查看目前 Guild 設定'))
     .addSubcommand((s) => s.setName('export').setDescription('匯出不含 Secret 的 Guild 設定'))
     .addSubcommand((s) => s.setName('timezone').setDescription('修改顯示時區').addStringOption((o) => o.setName('value').setDescription('例如 Asia/Taipei').setRequired(true).setMaxLength(100)))

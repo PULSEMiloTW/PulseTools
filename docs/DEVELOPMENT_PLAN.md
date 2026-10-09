@@ -27,4 +27,4 @@
 
 ## 驗收紀錄
 
-Phase 1 基礎驗收與 Phase 2 原文核心流程已有實際紀錄（PHASE_1_REPORT.md、PHASE_2_REPORT.md）。Phase 3 代表性真實事件與通知驗收通過，證據及未逐項實測的範圍見 PHASE_3_REPORT.md。Phase 4–7 尚未開始，不將基礎版本宣稱為完整產品。
+Phase 1 基礎驗收與 Phase 2 原文核心流程已有實際紀錄（PHASE_1_REPORT.md、PHASE_2_REPORT.md）。Phase 3 代表性真實事件與通知驗收通過，證據及未逐項實測的範圍見 PHASE_3_REPORT.md。Phase 4 已開始：先補齊設定重設確認與版本保護，其餘管理案件、健康監測與錯誤中心仍待實作。Phase 5–7 尚未開始，不將基礎版本宣稱為完整產品。

@@ -27,6 +27,7 @@
 | /owner operator add / remove | 目前 Guild 的成員授權（user、role） |
 | /owner lockdown | enabled 設定安全模式 |
 | /config view / export | 設定檢視、無 Secret JSON 匯出 |
+| /config reset | revision / confirm；重設本 Guild 設定，清空路由並關閉原文保存，保留歷史與模組開關 |
 | /config channel | purpose / channel 設定通知路由用途 |
 | /config timezone / language | 時區更新、目前 zh-TW 語言資訊 |
 | /config guild status / overview | 目前 Guild 狀態與設定 |

@@ -19,6 +19,25 @@ beforeEach(async () => {
   await core.guilds.setAuthorization(owner, guildB, '測試 B', true);
 });
 describe('Owner 與 Guild 授權', () => {
+  it('設定重設需確認與目前版本，保留其他 Guild、模組與歷史', async () => {
+    await core.configuration.setTimezone(actor(), 'UTC');
+    await core.modules.setEnabled(actor(), 'PT-01', true);
+    await expect(core.configuration.reset(actor(), 1, false)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(core.configuration.reset(actor(), 0, true)).rejects.toMatchObject({ code: 'CONFLICT' });
+    expect((await core.configuration.view(actor())).configuration.timezone).toBe('UTC');
+    const reset = await core.configuration.reset(actor(), 1, true);
+    expect(reset.configuration).toEqual(guildConfigurationSchema.parse({}));
+    expect(reset.revision).toBe(2);
+    expect((await core.configuration.view(actor(owner, guildB))).revision).toBe(0);
+    expect(await core.modules.enabled(guildA, 'PT-01')).toBe(true);
+    expect(repository.events.filter((event) => event.action === 'configuration.change')).toHaveLength(2);
+  });
+  it('重設仍受 Guild、內部授權與 Lockdown 保護', async () => {
+    await expect(core.configuration.reset(actor(admin), 0, true)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    await repository.setLockdown(true, owner);
+    await expect(core.configuration.reset(actor(), 0, true)).rejects.toMatchObject({ code: 'LOCKDOWN' });
+    expect((await core.configuration.view(actor())).revision).toBe(0);
+  });
   it('Guild Administrator 不能成為 Owner', async () => {
     await expect(core.guilds.setAuthorization(admin, guildA, '測試', false)).rejects.toMatchObject({ code: 'OWNER_REQUIRED' });
     expect((await repository.guild(guildA))?.authorized).toBe(true);

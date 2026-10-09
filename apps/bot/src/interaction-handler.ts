@@ -140,6 +140,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, ru
       } else if (interaction.commandName === 'config') {
         if (!(await core.modules.enabled(actor.guildId, 'PT-03'))) throw new PulseError('MODULE_UNAVAILABLE');
         title = 'Guild 設定中心';
+        if (sub === 'reset') await core.configuration.reset(actor, interaction.options.getInteger('revision', true), interaction.options.getBoolean('confirm', true));
         if (sub === 'timezone') await core.configuration.setTimezone(actor, interaction.options.getString('value', true));
         else if (sub === 'channel') {
           const selected = interaction.options.getChannel('channel', true);
