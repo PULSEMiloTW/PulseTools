@@ -12,6 +12,7 @@ export class MemoryRepository implements FoundationRepository {
   readonly events: SecurityEvent[] = [];
   private locked = false;
   async health() { return true; }
+  async auditHealth() { return true; }
   async guild(id: string) { const guild = this.guildData.get(id); return guild ? structuredClone(guild) : undefined; }
   async authorizedGuilds() { return [...this.guildData.values()].filter((guild) => guild.authorized).map((guild) => structuredClone(guild)); }
   async setGuildAuthorization(id: string, name: string, authorized: boolean, actorId: string) {

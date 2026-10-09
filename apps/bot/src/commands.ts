@@ -1,9 +1,29 @@
 import { ApplicationIntegrationType, InteractionContextType, SlashCommandBuilder } from 'discord.js';
-import { moduleIds } from '../../../packages/shared/src/models.js';
+import { moduleIds, messageEventTypes } from '../../../packages/shared/src/models.js';
 
 const base = (name: string, description: string) => new SlashCommandBuilder().setName(name).setDescription(description)
   .setContexts(InteractionContextType.Guild).setIntegrationTypes(ApplicationIntegrationType.GuildInstall);
 export const commands = [
+  base('logs', '訊息 Audit 與原文保存政策')
+    .addSubcommand((s) => s.setName('status').setDescription('查看本 Guild 紀錄政策與事件接收狀態'))
+    .addSubcommand((s) => s.setName('recent').setDescription('查看最近十筆事件中繼資料'))
+    .addSubcommand((s) => s.setName('snapshot').setDescription('授權者查看訊息原文與版本').addStringOption((o) => o.setName('message_id').setDescription('訊息 ID').setRequired(true)))
+    .addSubcommandGroup((g) => g.setName('event').setDescription('事件政策').addSubcommand((s) => s.setName('set').setDescription('開關一種訊息事件')
+      .addStringOption((o) => o.setName('type').setDescription('事件').setRequired(true).addChoices(...messageEventTypes.map((value) => ({ name: value, value }))))
+      .addBooleanOption((o) => o.setName('enabled').setDescription('是否記錄').setRequired(true))))
+    .addSubcommandGroup((g) => g.setName('retention').setDescription('保存期限').addSubcommand((s) => s.setName('set').setDescription('設定事件與原文保存天數')
+      .addIntegerOption((o) => o.setName('days').setDescription('1–365 天；縮短後下一次清理會移除過期資料').setRequired(true).setMinValue(1).setMaxValue(365))))
+    .addSubcommandGroup((g) => g.setName('capture').setDescription('原文保存政策')
+      .addSubcommand((s) => s.setName('enable').setDescription('明確確認並公告後啟用指定頻道原文保存')
+        .addChannelOption((o) => o.setName('channel').setDescription('保存原文的文字頻道；將在此發送隱私告知').setRequired(true))
+        .addStringOption((o) => o.setName('notice').setDescription('說明保存目的、期限與可見對象').setRequired(true).setMaxLength(1500))
+        .addBooleanOption((o) => o.setName('confirm').setDescription('確認公開告知並啟用原文保存').setRequired(true)))
+      .addSubcommand((s) => s.setName('disable').setDescription('停止保存新原文並關閉原文查閱'))
+      .addSubcommand((s) => s.setName('exclude').setDescription('排除頻道；即刻停止保存及查閱')
+        .addChannelOption((o) => o.setName('channel').setDescription('排除頻道').setRequired(true)))
+      .addSubcommand((s) => s.setName('viewer').setDescription('設定此 Guild 原文查看者（仍需內部與原生管理員權限）')
+        .addUserOption((o) => o.setName('user').setDescription('成員').setRequired(true))
+        .addBooleanOption((o) => o.setName('enabled').setDescription('允許或撤銷').setRequired(true)))),
   base('pulse', 'PulseTools 初始化檢查').addSubcommand((s) => s.setName('setup').setDescription('檢查授權、資料庫與 Bot 基礎權限')),
   base('system', 'PulseTools 系統資訊')
     .addSubcommand((s) => s.setName('status').setDescription('查看本次程序實際狀態'))

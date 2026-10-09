@@ -27,4 +27,4 @@
 
 ## 驗收紀錄
 
-Phase 1 實際結果保存於 PHASE_1_REPORT.md，已通過基礎驗收。Phase 2 為下一個開發階段，其餘階段尚未開始；Phase 1 不代表完整產品。
+Phase 1 實際結果保存於 PHASE_1_REPORT.md，已通過基礎驗收。Phase 2 Audit 基礎已實作，檢查與手動訊息驗收步驟見 PHASE_2_REPORT.md；真實訊息驗收仍待完成。其餘階段尚未開始，不將基礎版本宣稱為完整產品。

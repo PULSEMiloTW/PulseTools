@@ -1,6 +1,10 @@
 import { config } from 'dotenv';
 import type { PoolClient } from 'pg';
-import { ActivityType, Client, Events, GatewayIntentBits } from 'discord.js';
+import { ActivityType, Client, Events, GatewayIntentBits, Partials } from 'discord.js';
+import { PostgresAuditRepository } from '../../../packages/database/src/audit-repository.js';
+import { EventRouter } from '../../../packages/core/src/event-router.js';
+import { AuditService } from '../../../packages/core/src/audit-service.js';
+import { bindMessageEvents } from './message-events.js';
 import { connectDatabase } from '../../../packages/database/src/connection.js';
 import { PostgresRepository } from '../../../packages/database/src/repository.js';
 import { createCore } from '../../../packages/core/src/index.js';
@@ -16,8 +20,14 @@ async function main() {
   const env = parseEnvironment(process.env);
   const { pool, db } = connectDatabase(env.DATABASE_URL);
   const repository = new PostgresRepository(db);
-  const client = new Client({ intents: [GatewayIntentBits.Guilds], allowedMentions: { parse: [], repliedUser: false } });
-  const core = createCore(repository, env.DISCORD_OWNER_ID);
+  const client = new Client({ intents: env.DISCORD_MESSAGE_EVENTS_ENABLED ? [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] : [GatewayIntentBits.Guilds], partials: [Partials.Message, Partials.Channel], allowedMentions: { parse: [], repliedUser: false } });
+  const core = createCore(repository, env.DISCORD_OWNER_ID, env.DISCORD_MESSAGE_EVENTS_ENABLED);
+  const auditRepository = new PostgresAuditRepository(db);
+  const audit = new AuditService(auditRepository, core);
+  const router = new EventRouter(async (event) => {
+    if (await core.modules.enabled(event.guildId, 'PT-01')) await auditRepository.ingest(event);
+  }, (code) => console.error(`[PulseTools] ${code}`));
+  let retention: ReturnType<typeof setInterval> | undefined;
   // 保留連線持有 advisory lock，避免同一資料庫啟動兩個 Bot 並重複處理事件。
   let lease: PoolClient | undefined;
   const shutdown = async (exitCode: number) => {
@@ -25,6 +35,8 @@ async function main() {
     shuttingDown = true;
     const timer = setTimeout(() => process.exit(exitCode || 1), 10000).unref();
     client.destroy();
+    if (retention) clearInterval(retention);
+    await router.shutdown();
     await core.modules.shutdown();
     lease?.release();
     await pool.end();
@@ -40,7 +52,16 @@ async function main() {
     const lock = await lease.query<{ locked: boolean }>('select pg_try_advisory_lock(735902, 1) as locked');
     if (!lock.rows[0]?.locked) throw new Error('已有 PulseTools Bot 使用此資料庫；請勿重複啟動。');
     await repository.authorizedGuilds();
+    await repository.auditHealth();
+    await auditRepository.prune();
+    let pruning = false;
+    retention = setInterval(() => {
+      if (pruning) return;
+      pruning = true;
+      void auditRepository.prune().catch(() => console.error('[PulseTools] AUDIT_RETENTION_FAILED')).finally(() => { pruning = false; });
+    }, 3600000).unref();
     await core.modules.restore();
+    if (env.DISCORD_MESSAGE_EVENTS_ENABLED) bindMessageEvents(client, core, router);
     const capabilities = optionalCapabilities(env);
     console.info(`[PulseTools] 選用設定：R2 ${capabilities.r2Configured ? '已設定（模組尚未開放）' : '未設定'}；OAuth ${capabilities.oauthConfigured ? '已設定（Phase 6 開放）' : '未設定'}。`);
     const presence = () => client.user?.setPresence({ status: 'online', activities: [{ name: 'Powered by Pulse Studio', type: ActivityType.Watching }] });
@@ -53,7 +74,7 @@ async function main() {
     });
     client.on(Events.ShardResume, presence);
     client.on(Events.InteractionCreate, (interaction) => {
-      if (!shuttingDown && interaction.isChatInputCommand()) void handleCommand(interaction, { startedAt, client, core });
+      if (!shuttingDown && interaction.isChatInputCommand()) void handleCommand(interaction, { startedAt, client, core, audit, messageEventsEnabled: env.DISCORD_MESSAGE_EVENTS_ENABLED });
     });
     client.on(Events.Error, () => console.error('[PulseTools] Gateway 錯誤；discord.js 將處理重連。'));
     client.on(Events.Warn, () => console.warn('[PulseTools] Gateway 警告，請檢查連線與權限。'));

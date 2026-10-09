@@ -25,8 +25,9 @@ export class ModuleManager {
   }
   async enabled(guildId: string, id: ModuleId) {
     if (!(await this.repository.guild(guildId))?.authorized || !this.definition(id).available) return false;
-    return this.runtime.get(this.key(guildId, id))?.health === 'Running';
+    return this.isRunning(guildId, id);
   }
+  isRunning(guildId: string, id: ModuleId) { return this.runtime.get(this.key(guildId, id))?.health === 'Running'; }
   async setEnabled(actor: Actor, id: ModuleId, enabled: boolean) {
     const key = actor.guildId;
     const prior = this.queues.get(key) ?? Promise.resolve();

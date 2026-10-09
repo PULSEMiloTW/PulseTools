@@ -2,11 +2,11 @@
 
 每個模組定義包含 ID、名稱、版本、描述、可用狀態、依賴、必要權限、必要 Intents、設定 Schema、命令、事件處理及 initialize / shutdown / health。
 
-Phase 1 只提供 Core 基礎與管理功能。十個模組目錄不等於十個完整模組已完成：
+Phase 1–2 提供 Core 基礎、管理功能與訊息 Audit 基礎。十個模組目錄不等於十個完整模組已完成：
 
 | ID | 現況 |
 |---|---|
-| PT-01 | Unavailable；Phase 2～3 |
+| PT-01 | Phase 2 訊息 Audit / 原文政策可啟用；需明確開啟 Gateway Intents；其他事件與通知於 Phase 3 |
 | PT-02 | Unavailable；Phase 3 |
 | PT-03 | 可啟用基礎設定介面；匯入、確認重設等尚未實作 |
 | PT-04 | Unavailable；Phase 4 |

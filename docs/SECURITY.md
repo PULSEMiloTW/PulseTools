@@ -11,4 +11,6 @@
 - PostgreSQL advisory lock 防止重複 Bot；失去連線時停止，避免雙重處理。
 - Drizzle Kit 間接開發依賴的 esbuild 使用 override 至 ^0.25.0，避免已知開發伺服器漏洞；不啟動 Drizzle Studio 對外服務。
 
-OAuth2 Session / CSRF、Retention、R2 安全串流等尚未實作，不能對外部署或宣稱完整安全驗收。後續實作須遵守 Master Prompt 與 PT-10 安全狀態機。
+Phase 2 已實作 Audit / 原文保存期限清理、指定及排除頻道、隱私告知、viewer 授權、查閱紀錄及三張原文相關表的 RLS。原文不進普通 Debug Logs。啟用及擴大捕捉範圍需明確確認；關閉保存時同時關閉原文查閱。原文 JSON 附件只透過 Ephemeral 回覆給授權者；已下載附件不在 Bot 可撤回範圍內。
+
+OAuth2 Session / CSRF、R2 安全串流與完整 Error Center 尚未實作，不能對外部署或宣稱完整安全驗收。後續實作須遵守 Master Prompt 與 PT-10 安全狀態機。

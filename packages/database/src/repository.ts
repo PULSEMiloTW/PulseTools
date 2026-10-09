@@ -1,12 +1,13 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { Database } from './connection.js';
-import { configurationHistory, guilds, moduleStates, operators, securityEvents, systemSettings } from './schema.js';
+import { auditEvents, configurationHistory, guilds, moduleStates, operators, securityEvents, systemSettings } from './schema.js';
 import type { GuildConfiguration, GuildRecord, InternalRole, ModuleState, SecurityEvent } from '../../shared/src/models.js';
 import { PulseError } from '../../shared/src/errors.js';
 import { receivedTimestamp } from '../../shared/src/timestamp.js';
 
 export interface FoundationRepository {
   health(): Promise<boolean>;
+  auditHealth(): Promise<boolean>;
   guild(id: string): Promise<GuildRecord | undefined>;
   authorizedGuilds(): Promise<GuildRecord[]>;
   setGuildAuthorization(id: string, name: string, authorized: boolean, actorId: string): Promise<void>;
@@ -25,6 +26,7 @@ function event(guildId: string | null, actorId: string, action: string, details:
 export class PostgresRepository implements FoundationRepository {
   constructor(private readonly db: Database) {}
   async health() { await this.db.execute(sql`select 1`); return true; }
+  async auditHealth() { await this.db.select({ id: auditEvents.id }).from(auditEvents).limit(1); return true; }
   async guild(id: string) { return (await this.db.select().from(guilds).where(eq(guilds.id, id)))[0]; }
   async authorizedGuilds() { return this.db.select().from(guilds).where(eq(guilds.authorized, true)); }
   async setGuildAuthorization(id: string, name: string, authorized: boolean, actorId: string) {

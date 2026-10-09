@@ -19,3 +19,5 @@ Supabase 提供另一個明確的測試命令：`npm run test:database:sandbox`�
 依 WINDOWS_SETUP.md 檢查真正登入、指令互動、授權隔離、原生權限、Presence 與重啟。不得用 TypeScript 通過替代 Discord 上線證據。
 
 Phase 1 不包含可見網頁修改，無 Dashboard browser 驗收；Phase 6 必須做代表性畫面、互動及 console 驗證。
+
+Phase 2 額外驗證 EventRouter 佇列、重試、停止、Gateway 缺失欄位與政策預設；PostgreSQL 整合驗證原文確認、版本、刪除、重開連線、去重、Guild / 頻道隔離、viewer、RLS、期限縮短及級聯清理。真實訊息與手動重啟步驟見 PHASE_2_REPORT.md，未完成前不得進入 Phase 3。

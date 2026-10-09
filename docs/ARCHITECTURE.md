@@ -13,7 +13,7 @@ Monorepo + Modular Monolith，以 Node.js 24 LTS 與 Strict TypeScript 執行。
 | packages/modules | 模組介面與目錄；每個模組生命週期、依賴、Intents、權限、設定 Schema |
 | packages/embed-system | 統一品牌、色彩、長度限制與 mention 防護 |
 
-Phase 1 沒有 HTTP Listener、不處理訊息原文、不上傳 R2。Bot 僅要求 Guilds Intent；其他 Intents 由後續模組明確增加。資料庫 unavailable 時拒絕啟動，絕不以 MemoryRepository 回退；MemoryRepository 只存在於 tests/helpers。
+目前沒有 HTTP Listener、不上傳 R2。Phase 2 透過明確的 DISCORD_MESSAGE_EVENTS_ENABLED 開啟 GuildMessages / MessageContent Intents，接收原始 Gateway Dispatch → 有界 EventRouter → PostgresAuditRepository 交易，AuditService 統一驗證原文查看者。未開啟旗標時只要求 Guilds。資料庫 unavailable 時拒絕啟動，絕不以 MemoryRepository 回退；MemoryRepository 只存在於 tests/helpers。
 
 設定從 Repository 即時讀取，Guild 新增與撤銷無須重啟。每個設定更新使用 revision 條件，歷史與管理事件在同一個 PostgreSQL 交易保存。
 

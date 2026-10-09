@@ -22,6 +22,8 @@ npm run db:generate
 npm run db:migrate
 ```
 
-Bot 啟動不自動 migration。schema 異動應生成並審查 migration，備份與正式 migration 必須依使用者授權執行。Phase 2～5 會增加 Audit、Snapshot、案件、錯誤及 R2 表，不能在 Phase 1 宣稱已提供。
+Bot 啟動不自動 migration。schema 異動應生成並審查 migration，備份與正式 migration 必須依使用者授權執行。
+
+Phase 2 新增 audit_events、message_snapshots、message_versions；三表啟用 RLS、沒有前端存取政策。後端連線須為表 owner 或具 BYPASSRLS 的受保護角色；不可把這個連線交給瀏覽器。獨立執行角色須另配置僅後端使用的 RLS 政策及 GRANT，不能直接停用 RLS。Guild / eventKey 去重、Guild / Message 複合主鍵、Snapshot 列鎖及版本唯一鍵保護資料一致性。Snapshot 到期刪除時，版本級聯移除。政策保存在既有 Guild JSON 與設定歷史，未建立第二份政策來源。案件、錯誤及 R2 表仍待後續階段。
 
 `test:database` 使用專用空資料庫，檢查 public / drizzle 尚無資料表後才執行 migration；不會清空或刪除既有資料。

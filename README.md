@@ -4,7 +4,7 @@ Powered by Pulse Studio
 
 私人、多 Guild 的 Discord Management & Automation System，以 TypeScript Modular Monolith 開發。
 
-目前為 **Phase 1 基礎版本**，已完成 Windows 手動啟動、Discord 指令、兩 Guild 重啟持久化驗收及 PostgreSQL 整合測試。PT-01～10 的完整產品仍在依階段開發，Dashboard 與 R2 尚未開放。禁止把基礎驗收當作完整產品交付。
+Phase 1 已通過 Windows 手動啟動、Discord 指令與兩 Guild 持久化驗收。**Phase 2 Audit 基礎已實作，真實訊息驗收待手動重啟**；啟用步驟見 [Phase 2 報告](docs/PHASE_2_REPORT.md)。PT-01～10 的完整產品仍在依階段開發，Dashboard 與 R2 尚未開放。
 
 ## 快速開始（Windows）
 

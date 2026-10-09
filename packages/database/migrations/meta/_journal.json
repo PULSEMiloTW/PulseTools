@@ -8,6 +8,20 @@
       "when": 1791531467719,
       "tag": "0000_orange_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791537001930,
+      "tag": "0001_steep_millenium_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791537328339,
+      "tag": "0002_motionless_ink",
+      "breakpoints": true
     }
   ]
 }

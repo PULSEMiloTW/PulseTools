@@ -1,11 +1,12 @@
 import { AttachmentBuilder, MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction, type Client } from 'discord.js';
 import type { Core } from '../../../packages/core/src/index.js';
+import type { AuditService } from '../../../packages/core/src/audit-service.js';
 import { pulseEmbed, allowedMentions } from '../../../packages/embed-system/src/index.js';
-import { moduleIdSchema, snowflake, internalRoleSchema, type Actor, type ChannelPurpose } from '../../../packages/shared/src/models.js';
+import { guildConfigurationSchema, moduleIdSchema, snowflake, internalRoleSchema, messageEventTypeSchema, type Actor, type ChannelPurpose } from '../../../packages/shared/src/models.js';
 import { PulseError, safeErrorCode } from '../../../packages/shared/src/errors.js';
 import { formatTimestamp, receivedTimestamp } from '../../../packages/shared/src/timestamp.js';
 
-export interface BotRuntime { startedAt: Date; client: Client; core: Core }
+export interface BotRuntime { startedAt: Date; client: Client; core: Core; audit?: AuditService; messageEventsEnabled?: boolean }
 export async function handleCommand(interaction: ChatInputCommandInteraction, runtime: BotRuntime) {
   const { core, client } = runtime;
   try {
@@ -49,12 +50,57 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, ru
       if (interaction.commandName === 'module' || (interaction.commandName === 'system' && sub === 'modules')) {
         title = '模組管理';
         if (sub === 'enable' || sub === 'disable') {
-          await core.modules.setEnabled(actor, moduleIdSchema.parse(interaction.options.getString('id', true)), sub === 'enable');
+          const id = moduleIdSchema.parse(interaction.options.getString('id', true));
+          if (id === 'PT-01' && sub === 'enable' && !runtime.messageEventsEnabled) throw new PulseError('MODULE_UNAVAILABLE');
+          await core.modules.setEnabled(actor, id, sub === 'enable');
           description = '模組狀態已更新。Core 授權、設定、錯誤邊界保持運作。';
         } else if (sub === 'info') {
           const module = core.modules.definition(moduleIdSchema.parse(interaction.options.getString('id', true)));
           description = `${module.id} · ${module.name}\n${module.description}\n版本：${module.version}\n依賴：${module.dependencies.join('、') || '無'}\n必要權限：${module.requiredPermissions.join('、') || '由 Core 驗證'}\nGateway Intents：${module.requiredGatewayIntents.join('、')}`;
         } else description = (await core.modules.list(actor)).map((module) => `${module.id} ${module.name} · ${module.health}`).join('\n');
+      } else if (interaction.commandName === 'logs') {
+        if (!runtime.audit || !(await core.modules.enabled(actor.guildId, 'PT-01'))) throw new PulseError('MODULE_UNAVAILABLE');
+        title = '訊息 Audit';
+        let guild = await core.configuration.view(actor);
+        if (group === 'capture') {
+          await core.permissions.requireAdmin(actor, true);
+          const capture = { ...guild.configuration.capture };
+          if (sub === 'enable') {
+            if (!runtime.messageEventsEnabled || interaction.options.getBoolean('confirm', true) !== true) throw new PulseError('INVALID_INPUT');
+            const selected = interaction.options.getChannel('channel', true);
+            const channel = await interaction.guild?.channels.fetch(selected.id);
+            const botMember = interaction.guild?.members.me;
+            const notice = interaction.options.getString('notice', true).trim();
+            if (!notice || !channel?.isTextBased() || !('send' in channel) || !botMember || !channel.permissionsFor(botMember)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks])) throw new PulseError('INVALID_INPUT');
+            capture.enabled = true;
+            capture.allowedChannels = [...new Set([...capture.allowedChannels, channel.id])];
+            capture.excludedChannels = capture.excludedChannels.filter((id) => id !== channel.id);
+            capture.privacyNotice = notice;
+            if (!guildConfigurationSchema.safeParse({ ...guild.configuration, capture }).success) throw new PulseError('INVALID_INPUT');
+            // 此公開訊息只在使用者明確提交 confirm:true 的指令時發送。
+            await channel.send({ embeds: [pulseEmbed({ title: '訊息原文保存告知', description: `${notice}\n保存期限：${capture.retentionDays} 天\n查看對象：Owner 與此 Guild 明確授權且具管理員權限的查看者。` })], allowedMentions });
+          } else if (sub === 'disable') capture.enabled = false;
+          else if (sub === 'exclude') capture.excludedChannels = [...new Set([...capture.excludedChannels, interaction.options.getChannel('channel', true).id])];
+          else if (sub === 'viewer') {
+            const user = interaction.options.getUser('user', true);
+            if (user.bot || !(await interaction.guild?.members.fetch(user.id).catch(() => null))) throw new PulseError('INVALID_INPUT');
+            capture.viewerIds = interaction.options.getBoolean('enabled', true) ? [...new Set([...capture.viewerIds, user.id])] : capture.viewerIds.filter((id) => id !== user.id);
+          }
+          guild = await core.configuration.setCapture(actor, capture, sub === 'enable', guild.revision);
+        } else if (group === 'event') {
+          const type = messageEventTypeSchema.parse(interaction.options.getString('type', true));
+          const enabledEvents = interaction.options.getBoolean('enabled', true) ? [...new Set([...guild.configuration.audit.enabledEvents, type])] : guild.configuration.audit.enabledEvents.filter((value) => value !== type);
+          guild = await core.configuration.setAudit(actor, { ...guild.configuration.audit, enabledEvents }, guild.revision);
+        } else if (group === 'retention') {
+          const days = interaction.options.getInteger('days', true);
+          guild = await core.configuration.replace(actor, { ...guild.configuration, audit: { ...guild.configuration.audit, retentionDays: days }, capture: { ...guild.configuration.capture, retentionDays: days } }, guild.revision);
+        }
+        if (sub === 'recent') description = (await runtime.audit.recent(actor)).map((event) => `${event.eventType} · ${event.messageId} · ${event.captureStatus}\n${formatTimestamp(event.eventAt, guild.configuration.timezone)} · 來源 ${event.timestampSource} · 操作者 ${event.attribution}`).join('\n') || '尚無事件。';
+        else if (sub === 'snapshot') {
+          const result = await runtime.audit.snapshot(actor, interaction.options.getString('message_id', true));
+          description = result ? `訊息：${result.snapshot.messageId}\n狀態：${result.snapshot.captureStatus}\n版本：${result.snapshot.revision}` : 'Unavailable：沒有可用且未過期的原文。';
+          if (result) files = [new AttachmentBuilder(Buffer.from(JSON.stringify(result, null, 2), 'utf8'), { name: `snapshot-${result.snapshot.messageId}.json` })];
+        } else description = `Gateway 訊息接收：${runtime.messageEventsEnabled ? '已啟用' : '未啟用'}\n事件：${guild.configuration.audit.enabledEvents.join('、') || '全部關閉'}\n原文保存：${guild.configuration.capture.enabled ? '啟用' : '關閉'}\n指定頻道：${guild.configuration.capture.allowedChannels.join('、') || '無'}\n排除頻道：${guild.configuration.capture.excludedChannels.join('、') || '無'}\n事件保存：${guild.configuration.audit.retentionDays} 天\n原文保存：${guild.configuration.capture.retentionDays} 天\n缺失原文標記 Unavailable；不推定刪除操作者。`;
       } else if (interaction.commandName === 'config') {
         if (!(await core.modules.enabled(actor.guildId, 'PT-03'))) throw new PulseError('MODULE_UNAVAILABLE');
         title = 'Guild 設定中心';
@@ -73,7 +119,7 @@ export async function handleCommand(interaction: ChatInputCommandInteraction, ru
         const me = interaction.guild?.members.me;
         const channel = interaction.channel;
         const canSend = me && channel && 'permissionsFor' in channel && channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks]);
-        description = `Guild 已授權\n資料庫：${await core.repository.health() ? '連線正常' : '不可用'}\nGateway Intent：Guilds（Phase 1）\nBot 基礎訊息權限：${canSend ? '具備' : '不足或無法確認'}\n使用 /module enable 啟用 PT-03 設定介面。\n其他功能依後續階段驗收逐步開放。`;
+        description = `Guild 已授權\n資料庫：${await core.repository.health() ? '連線正常' : '不可用'}\nGateway Intent：${runtime.messageEventsEnabled ? 'Guilds、GuildMessages、MessageContent' : 'Guilds（訊息接收尚未啟用）'}\nBot 基礎訊息權限：${canSend ? '具備' : '不足或無法確認'}\n使用 /module enable 啟用 PT-03 設定介面。\n其他功能依後續階段驗收逐步開放。`;
       } else if (interaction.commandName === 'system') {
         if (sub === 'diagnostics') core.permissions.requireOwner(actor.userId);
         const modules = await core.modules.list(actor);

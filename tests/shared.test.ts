@@ -60,7 +60,7 @@ describe('Timestamp 與 Embed', () => {
     expect(result.toJSON().fields?.length).toBeLessThanOrEqual(25);
   });
   it('所有 Slash Commands 能轉換為官方結構且限定 Guild', () => {
-    expect(commands.map((command) => command.toJSON().name)).toEqual(['pulse', 'system', 'owner', 'config', 'module']);
+    expect(commands.map((command) => command.toJSON().name)).toEqual(['logs', 'pulse', 'system', 'owner', 'config', 'module']);
     for (const command of commands) expect(command.toJSON().contexts).toEqual([0]);
   });
 });

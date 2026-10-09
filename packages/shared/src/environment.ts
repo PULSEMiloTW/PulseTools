@@ -19,6 +19,7 @@ const schema = z.object({
   R2_PUBLIC_BASE_URL: optionalText,
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+  DISCORD_MESSAGE_EVENTS_ENABLED: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
 });
 export type Environment = z.infer<typeof schema>;
 export function parseEnvironment(input: Record<string, string | undefined>): Environment {

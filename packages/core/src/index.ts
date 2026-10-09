@@ -5,13 +5,13 @@ import { GuildManager } from './guild-manager.js';
 import { ConfigurationManager } from './configuration-manager.js';
 import { ModuleManager } from './module-manager.js';
 
-export function createCore(repository: FoundationRepository, ownerId: string) {
+export function createCore(repository: FoundationRepository, ownerId: string, messageEventsEnabled = true) {
   const permissions = new PermissionManager(repository, ownerId);
   return {
     repository, permissions,
     guilds: new GuildManager(repository, permissions),
     configuration: new ConfigurationManager(repository, permissions),
-    modules: new ModuleManager(repository, permissions, moduleCatalog),
+    modules: new ModuleManager(repository, permissions, moduleCatalog.map((definition) => definition.id === 'PT-01' && !messageEventsEnabled ? { ...definition, available: false, description: `${definition.description}；本次程序尚未啟用訊息 Gateway Intents` } : definition)),
   };
 }
 export type Core = ReturnType<typeof createCore>;

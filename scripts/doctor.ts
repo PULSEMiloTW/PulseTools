@@ -11,6 +11,7 @@ async function doctor() {
   try {
     const repository = new PostgresRepository(db);
     await repository.health();
+    await repository.auditHealth();
     const guilds = await repository.authorizedGuilds();
     await repository.lockdown();
     console.info(`PostgreSQL 與基礎資料表正常；已授權 Guild 數：${guilds.length}。`);

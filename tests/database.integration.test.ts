@@ -13,6 +13,9 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { databaseConnectionOptions } from '../packages/database/src/connection.js';
 import * as schema from '../packages/database/src/schema.js';
+import { PostgresAuditRepository } from '../packages/database/src/audit-repository.js';
+import { AuditService } from '../packages/core/src/audit-service.js';
+import type { MessageEvent } from '../packages/shared/src/audit.js';
 
 const sandbox = process.env.DATABASE_TEST_SCHEMA_ISOLATION === '1';
 const url = sandbox ? process.env.DATABASE_URL : process.env.TEST_DATABASE_URL;
@@ -74,6 +77,13 @@ afterAll(async () => {
   }
 });
 it('Migration 建立真實 PostgreSQL Schema', () => { expect(schemaCreated).toBe(true); });
+it('原文及 Audit 表啟用 RLS 且沒有匿名 API 讀取政策', async () => {
+  const result = await db.execute<{ relname: string; relrowsecurity: boolean }>(sql`select relname, relrowsecurity from pg_class where relnamespace = current_schema()::regnamespace and relname in ('audit_events', 'message_snapshots', 'message_versions')`);
+  expect(result.rows).toHaveLength(3);
+  expect(result.rows.every((row) => row.relrowsecurity)).toBe(true);
+  const policies = await db.execute(sql`select * from pg_policies where schemaname = current_schema() and tablename in ('audit_events', 'message_snapshots', 'message_versions')`);
+  expect(policies.rows).toHaveLength(0);
+});
 it('兩個 Guild 設定保存與重開連線後仍隔離', async () => {
   await core.configuration.setTimezone(actor(guildA), 'UTC');
   const second = testConnection();
@@ -111,8 +121,110 @@ it('UTC 時間與事件來源保存於資料庫', async () => {
   const timezone = await db.execute(sql`show timezone`);
   expect(timezone.rows[0]?.TimeZone).toBe('UTC');
 });
-it('撤銷 Guild 不刪除持久設定但立即拒絕讀取', async () => {
+const auditRepository = new PostgresAuditRepository(db);
+const audit = new AuditService(auditRepository, core);
+const channel = '300000000000000001';
+const message = '400000000000000001';
+const messageEvent = (overrides: Partial<MessageEvent> = {}): MessageEvent => ({ guildId: guildA, channelId: channel, messageId: message, authorId: owner,
+  type: 'message.create', eventKey: 'create:1', content: '原文', partial: false, receivedAt: new Date(), eventAt: new Date(), ...overrides });
+it('原文預設關閉，事件不含內容且沒有 Snapshot', async () => {
+  await core.modules.setEnabled(actor(guildA), 'PT-01', true);
+  expect(await auditRepository.ingest(messageEvent())).toBe('stored');
+  expect(await auditRepository.snapshot(guildA, message)).toBeUndefined();
+  expect(JSON.stringify(await auditRepository.recent(guildA))).not.toContain('原文');
+});
+it('明確確認才可保存，建立、編輯、刪除版本及重開連線持久化', async () => {
+  const guild = await core.configuration.view(actor(guildA));
+  const capture = { ...guild.configuration.capture, enabled: true, allowedChannels: [channel], privacyNotice: '整合測試原文告知' };
+  await expect(core.configuration.setCapture(actor(guildA), capture, false)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  await core.configuration.setCapture(actor(guildA), capture, true);
+  const created = new Date();
+  expect(await auditRepository.ingest(messageEvent({ eventKey: 'create:2', eventAt: created }))).toBe('stored');
+  await auditRepository.ingest(messageEvent({ type: 'message.update', eventKey: 'update:2', content: '編輯版本', eventAt: new Date(created.getTime() + 1) }));
+  await auditRepository.ingest(messageEvent({ type: 'message.delete', eventKey: 'delete:2', content: null, partial: true, eventAt: null }));
+  const second = testConnection();
+  try {
+    const saved = await new PostgresAuditRepository(second.db).snapshot(guildA, message);
+    expect(saved?.snapshot.originalContent).toBe('原文');
+    expect(saved?.snapshot.latestContent).toBe('編輯版本');
+    expect(saved?.snapshot.deletedAt).toBeInstanceOf(Date);
+    expect(saved?.snapshot.captureStatus).toBe('Captured');
+    expect(saved?.versions.map((version) => version.content)).toEqual(['編輯版本', '編輯版本', '原文']);
+    expect((await auditRepository.recent(guildA)).find((value) => value.eventKey === 'delete:2')).toMatchObject({ timestampSource: 'received', actorId: null, attribution: '無法確認' });
+  } finally { await second.pool.end(); }
+});
+it('並行重複事件只建立一筆 Audit 與版本；Guild 不能讀取另一 Guild 原文', async () => {
+  const input = messageEvent({ messageId: '400000000000000002', eventKey: 'concurrent:1' });
+  const results = await Promise.all([auditRepository.ingest(input), auditRepository.ingest(input)]);
+  expect(results.sort()).toEqual(['duplicate', 'stored']);
+  expect((await auditRepository.snapshot(guildA, input.messageId))?.versions).toHaveLength(1);
+  const at = new Date();
+  await Promise.all([
+    auditRepository.ingest({ ...input, type: 'message.update', eventKey: 'concurrent:update:1', content: '較早版本', eventAt: at }),
+    auditRepository.ingest({ ...input, type: 'message.update', eventKey: 'concurrent:update:2', content: '較晚版本', eventAt: new Date(at.getTime() + 1) }),
+  ]);
+  const saved = await auditRepository.snapshot(guildA, input.messageId);
+  expect(saved?.versions).toHaveLength(3);
+  expect(saved?.snapshot.latestContent).toBe('較晚版本');
+  expect(await auditRepository.snapshot(guildB, input.messageId)).toBeUndefined();
+  expect(await auditRepository.recent(guildB)).toHaveLength(0);
+});
+it('未保存的刪除、Partial、更新後才開始捕捉與亂序事件不偽造原文', async () => {
+  const id = '400000000000000003';
+  await auditRepository.ingest(messageEvent({ messageId: id, type: 'message.delete', eventKey: 'unknown-delete', content: null, partial: true, eventAt: null }));
+  expect((await auditRepository.snapshot(guildA, id))?.snapshot).toMatchObject({ originalContent: null, latestContent: null, captureStatus: 'Unavailable' });
+  const edited = '400000000000000004';
+  const at = new Date();
+  await auditRepository.ingest(messageEvent({ messageId: edited, type: 'message.update', eventKey: 'late-edit', content: '新版本', eventAt: at }));
+  await auditRepository.ingest(messageEvent({ messageId: edited, type: 'message.update', eventKey: 'early-edit', content: '較舊版本', eventAt: new Date(at.getTime() - 10) }));
+  expect((await auditRepository.snapshot(guildA, edited))?.snapshot).toMatchObject({ originalContent: null, latestContent: '新版本' });
+  await auditRepository.ingest(messageEvent({ messageId: edited, type: 'message.update', eventKey: 'partial-edit', content: null, partial: true, eventAt: new Date(at.getTime() + 10) }));
+  expect((await auditRepository.snapshot(guildA, edited))?.snapshot).toMatchObject({ originalContent: null, latestContent: '新版本', captureStatus: 'Unavailable' });
+});
+it('排除頻道、事件開關與停用模組停止新資料寫入', async () => {
+  const guild = await core.configuration.view(actor(guildA));
+  await core.configuration.setCapture(actor(guildA), { ...guild.configuration.capture, excludedChannels: [channel] }, false);
+  const id = '400000000000000005';
+  await auditRepository.ingest(messageEvent({ messageId: id, eventKey: 'excluded:1' }));
+  expect(await auditRepository.snapshot(guildA, id)).toBeUndefined();
+  await expect(audit.snapshot(actor(guildA), message)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+  await core.configuration.setAudit(actor(guildA), { enabledEvents: [], retentionDays: 30 });
+  expect(await auditRepository.ingest(messageEvent({ eventKey: 'disabled-event' }))).toBe('ignored');
+  await core.modules.setEnabled(actor(guildA), 'PT-01', false);
+  expect(await auditRepository.ingest(messageEvent({ eventKey: 'disabled-module' }))).toBe('ignored');
+});
+it('原文查閱須明確 viewer 授權、原生管理員與同 Guild 內部角色', async () => {
+  const guild = await core.configuration.view(actor(guildA));
+  const viewer = '100000000000000002';
+  await core.configuration.setCapture(actor(guildA), { ...guild.configuration.capture, excludedChannels: [], viewerIds: [] }, true);
+  await expect(audit.snapshot({ userId: viewer, guildId: guildA, nativeAdministrator: true }, message)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+  const current = await core.configuration.view(actor(guildA));
+  await core.configuration.setCapture(actor(guildA), { ...current.configuration.capture, viewerIds: [viewer] }, false);
+  expect((await audit.snapshot({ userId: viewer, guildId: guildA, nativeAdministrator: true }, message))?.snapshot.messageId).toBe(message);
+  await expect(audit.snapshot({ userId: viewer, guildId: guildA, nativeAdministrator: false }, message)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+  await expect(audit.snapshot({ userId: viewer, guildId: guildB, nativeAdministrator: true }, message)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+});
+it('保存期限縮短後清除 Snapshot、級聯版本及事件，但不移除 Guild 設定', async () => {
+  await core.modules.setEnabled(actor(guildA), 'PT-01', true);
+  await core.configuration.setAudit(actor(guildA), { enabledEvents: ['message.create', 'message.update', 'message.delete'], retentionDays: 30 });
+  const old = '400000000000000006';
+  const time = new Date(Date.now() - 2 * 86400000);
+  await auditRepository.ingest(messageEvent({ messageId: old, eventKey: 'old:1', eventAt: time, receivedAt: time }));
+  const guild = await core.configuration.view(actor(guildA));
+  await core.configuration.replace(actor(guildA), { ...guild.configuration, capture: { ...guild.configuration.capture, retentionDays: 1 }, audit: { ...guild.configuration.audit, retentionDays: 1 } }, guild.revision);
+  expect(await auditRepository.snapshot(guildA, old)).toBeUndefined();
+  await auditRepository.prune();
+  expect(await db.select().from(schema.messageSnapshots).where(eq(schema.messageSnapshots.messageId, old))).toHaveLength(0);
+  expect(await db.select().from(schema.messageVersions).where(eq(schema.messageVersions.messageId, old))).toHaveLength(0);
+  await auditRepository.prune(new Date(Date.now() + 31 * 86400000));
+  expect(await auditRepository.snapshot(guildA, message)).toBeUndefined();
+  expect(await db.select().from(schema.messageVersions)).toHaveLength(0);
+  expect(await auditRepository.recent(guildA)).toHaveLength(0);
+  expect((await repository.guild(guildA))?.authorized).toBe(true);
+});
+it('撤銷 Guild 不刪除持久設定但立即拒絕讀取與新事件', async () => {
   await core.guilds.setAuthorization(owner, guildA, '測試 A', false);
   await expect(core.configuration.view(actor(guildA))).rejects.toMatchObject({ code: 'GUILD_DENIED' });
   expect((await db.select().from(guilds).where(eq(guilds.id, guildA)))[0]?.configuration.timezone).toBe('UTC');
+  expect(await auditRepository.ingest(messageEvent({ eventKey: 'revoked' }))).toBe('ignored');
 });
