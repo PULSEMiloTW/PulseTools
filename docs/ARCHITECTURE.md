@@ -22,3 +22,5 @@ Monorepo + Modular Monolith，以 Node.js 24 LTS 與 Strict TypeScript 執行。
 後續 API 必須沿用 Core Services 與相同授權，不新增第二套設定或管理邏輯。必要 Core 權限、錯誤邊界與復原管理不受業務模組開關停用。
 
 Phase 3：Discord 型別事件 → 每 Guild EventRouter → PostgresServerEventRepository → 同交易 Notification Outbox → NotificationWorker → Discord Embed。訊息沿用 Phase 2 Repository 並在同一交易排入不含原文的通知。Gateway context 使用 session 雜湊與 sequence 防重；PT-02 獨立生命週期。Worker 在就緒時即時喚醒並每兩秒處理待送工作；使用者啟用模組及設定頻道後才會發送。
+
+Phase 4：ModerationService 統一內部授權與 Lockdown，DiscordModerationTransport 取得最新成員、原生權限、Bot 權限與階級；Repository 先保存案件再執行外部操作，結果與安全通知同交易保存。程序中斷後 Pending 恢復 Unknown，不重做處分。HealthMonitor 測量真實程序與 API／DB，每分鐘只為已啟用 PT-05 的授權 Guild 保存樣本。Core 錯誤邊界透過 MonitoringRepository 保存安全分類與五分鐘聚合；ErrorService 統一查閱／確認及全域 Owner 權限。

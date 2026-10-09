@@ -17,6 +17,13 @@ import { createCore } from '../../../packages/core/src/index.js';
 import { parseEnvironment, optionalCapabilities } from '../../../packages/shared/src/environment.js';
 import { handleCommand } from './interaction-handler.js';
 import { safeErrorCode } from '../../../packages/shared/src/errors.js';
+import { PostgresModerationRepository } from '../../../packages/database/src/moderation-repository.js';
+import { ModerationService } from '../../../packages/core/src/moderation-service.js';
+import { DiscordModerationTransport } from './moderation-transport.js';
+import { PostgresMonitoringRepository } from '../../../packages/database/src/monitoring-repository.js';
+import { ErrorService } from '../../../packages/core/src/error-service.js';
+import { HealthMonitor } from '../../../packages/core/src/health-monitor.js';
+import type { ErrorInput } from '../../../packages/shared/src/monitoring.js';
 
 // 開發及編譯後皆從專案根啟動；不搜尋其他專案的 .env。
 config({ path: '.env', quiet: true });
@@ -29,11 +36,27 @@ async function main() {
   const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildInvites];
   if (env.DISCORD_MESSAGE_EVENTS_ENABLED) intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent);
   if (env.DISCORD_MEMBER_EVENTS_ENABLED) intents.push(GatewayIntentBits.GuildMembers);
-  const client = new Client({ intents, partials: [Partials.Message, Partials.Channel, Partials.GuildMember], allowedMentions: { parse: [], repliedUser: false } });
+  const client = new Client({ intents, rest: { retries: 0 }, partials: [Partials.Message, Partials.Channel, Partials.GuildMember], allowedMentions: { parse: [], repliedUser: false } });
   const core = createCore(repository, env.DISCORD_OWNER_ID, env.DISCORD_MESSAGE_EVENTS_ENABLED, env.DISCORD_MEMBER_EVENTS_ENABLED);
   const auditRepository = new PostgresAuditRepository(db);
   const serverRepository = new PostgresServerEventRepository(db);
   const notifications = new PostgresNotificationRepository(db);
+  const moderationRepository = new PostgresModerationRepository(db);
+  const moderation = new ModerationService(core, moderationRepository, new DiscordModerationTransport(client), async (actor) => {
+    try { await recordError({ guildId: actor.guildId, moduleId: 'PT-04', type: 'API', code: 'INTERNAL_ERROR', occurredAt: new Date() }); }
+    catch { console.error('[PulseTools] ERROR_PERSIST_FAILED'); }
+  });
+  const monitoring = new PostgresMonitoringRepository(db);
+  const errors = new ErrorService(core, monitoring);
+  const health = new HealthMonitor(core, client, startedAt, monitoring, notifications);
+  const recordError = async (input: ErrorInput) => { await monitoring.record(input); };
+  const backgroundError = (code: ErrorInput['code'], type: ErrorInput['type'], moduleId: ErrorInput['moduleId'] = null) => {
+    console.error(`[PulseTools] ${code}`);
+    if (shuttingDown) return;
+    const operation = recordError({ guildId: null, moduleId, type, code, occurredAt: new Date() }).catch(() => console.error('[PulseTools] ERROR_PERSIST_FAILED'));
+    backgroundInFlight.add(operation);
+    void operation.finally(() => backgroundInFlight.delete(operation));
+  };
   const audit = new AuditService(auditRepository, core, serverRepository);
   const worker = new NotificationWorker(notifications, async (job, message) => {
     const guild = client.guilds.cache.get(job.guildId);
@@ -42,18 +65,23 @@ async function main() {
     if (!channel?.isTextBased() || !('send' in channel) || !me || !channel.permissionsFor(me)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks]) || (channel.isThread() && !channel.permissionsFor(me)?.has(PermissionFlagsBits.SendMessagesInThreads))) throw { code: '50013' };
     const nonce = BigInt('0x' + createHash('sha256').update(job.id).digest('hex').slice(0, 16)).toString();
     return (await channel.send({ ...message, nonce, enforceNonce: true })).id;
-  }, (job) => core.modules.enabled(job.guildId, job.moduleId), () => client.isReady());
-  const wake = () => { void worker.flush().catch(() => console.error('[PulseTools] NOTIFICATION_WORKER_FAILED')); };
+  }, (job) => core.modules.enabled(job.guildId, job.moduleId), () => client.isReady(), async (job) => {
+    await recordError({ guildId: job.guildId, moduleId: job.moduleId, type: 'API', code: 'NOTIFICATION_FAILED', occurredAt: new Date() });
+  });
+  const wake = () => { void worker.flush().catch(() => backgroundError('NOTIFICATION_FAILED', 'API')); };
   const router = new EventRouter(async (event) => {
     if (await core.modules.enabled(event.guildId, 'PT-01')) await auditRepository.ingest(event);
     wake();
-  }, (code) => console.error(`[PulseTools] ${code}`));
+  }, (code) => { console.error(`[PulseTools] ${code}`); backgroundError('AUDIT_FAILED', 'Database', 'PT-01'); });
   const serverRouter = new EventRouter<ServerEvent>(async (event) => {
     if (await core.modules.enabled(event.guildId, 'PT-01') || ((event.type === 'member.join' || event.type === 'member.leave') && await core.modules.enabled(event.guildId, 'PT-02'))) await serverRepository.ingest(event);
     wake();
-  }, (code) => console.error(`[PulseTools] ${code}`));
+  }, (code) => { console.error(`[PulseTools] ${code}`); backgroundError('AUDIT_FAILED', 'Database', 'PT-01'); });
   let retention: ReturnType<typeof setInterval> | undefined;
   let delivery: ReturnType<typeof setInterval> | undefined;
+  let sampling: ReturnType<typeof setInterval> | undefined;
+  const commandsInFlight = new Set<Promise<void>>();
+  const backgroundInFlight = new Set<Promise<void>>();
   // 保留連線持有 advisory lock，避免同一資料庫啟動兩個 Bot 並重複處理事件。
   let lease: PoolClient | undefined;
   const shutdown = async (exitCode: number) => {
@@ -63,9 +91,13 @@ async function main() {
     client.destroy();
     if (retention) clearInterval(retention);
     if (delivery) clearInterval(delivery);
+    if (sampling) clearInterval(sampling);
     await router.shutdown();
     await serverRouter.shutdown();
+    await Promise.allSettled([...commandsInFlight]);
     await worker.shutdown();
+    await health.shutdown();
+    await Promise.allSettled([...backgroundInFlight]);
     await core.modules.shutdown();
     lease?.release();
     await pool.end();
@@ -83,6 +115,9 @@ async function main() {
     await repository.authorizedGuilds();
     await repository.auditHealth();
     await notifications.recover();
+    await moderationRepository.health();
+    await moderationRepository.recover();
+    await monitoring.health();
     await auditRepository.prune();
     let pruning = false;
     retention = setInterval(() => {
@@ -103,13 +138,20 @@ async function main() {
       presence();
       delivery = setInterval(wake, 2000).unref();
       wake();
+      const sample = () => { void health.poll(env.DISCORD_OWNER_ID).catch(() => backgroundError('HEALTH_FAILED', 'Database', 'PT-05')); };
+      sampling = setInterval(sample, 60000).unref();
+      sample();
       console.info(`[PulseTools] Discord 已連線 · Bot ${ready.user.id} · Guild ${ready.guilds.cache.size} · ${new Date().toISOString()}`);
     });
     client.on(Events.ShardResume, presence);
     client.on(Events.InteractionCreate, (interaction) => {
-      if (!shuttingDown && interaction.isChatInputCommand()) void handleCommand(interaction, { startedAt, client, core, audit, notifications, wakeNotifications: wake, messageEventsEnabled: env.DISCORD_MESSAGE_EVENTS_ENABLED, memberEventsEnabled: env.DISCORD_MEMBER_EVENTS_ENABLED });
+      if (!shuttingDown && interaction.isChatInputCommand()) {
+        const operation = handleCommand(interaction, { startedAt, client, core, audit, moderation, errors, health, recordError, notifications, wakeNotifications: wake, messageEventsEnabled: env.DISCORD_MESSAGE_EVENTS_ENABLED, memberEventsEnabled: env.DISCORD_MEMBER_EVENTS_ENABLED });
+        commandsInFlight.add(operation);
+        void operation.finally(() => commandsInFlight.delete(operation));
+      }
     });
-    client.on(Events.Error, () => console.error('[PulseTools] Gateway 錯誤；discord.js 將處理重連。'));
+    client.on(Events.Error, () => backgroundError('GATEWAY_ERROR', 'Gateway'));
     client.on(Events.Warn, () => console.warn('[PulseTools] Gateway 警告，請檢查連線與權限。'));
     await client.login(env.DISCORD_BOT_TOKEN);
   } catch (error) {

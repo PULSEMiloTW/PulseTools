@@ -4,6 +4,7 @@ import { notificationPayloadSchema } from '../../shared/src/server-events.js';
 import { allowedMentions, pulseEmbed } from '../../embed-system/src/index.js';
 import { formatTimestamp } from '../../shared/src/timestamp.js';
 const titles: Record<string, string> = {
+  'moderation.case': '管理案件', 'error.record': '系統異常紀錄',
   'member.join': '成員加入', 'member.leave': '成員離開', 'member.update': '成員資料更新（舊資料不可用）', 'member.nickname': '暱稱更新', 'member.role.add': '成員身分組新增', 'member.role.remove': '成員身分組移除',
   'voice.join': '加入語音', 'voice.leave': '離開語音', 'voice.switch': '切換語音頻道',
   'message.create': '訊息建立', 'message.update': '訊息編輯', 'message.delete': '訊息刪除',
@@ -25,10 +26,10 @@ export function notificationEmbed(job: Pick<NotificationJob, 'id' | 'moduleId' |
     configuration.welcome.showAccountCreated && job.moduleId === 'PT-02' ? `帳號建立：${account}` : '',
     data.before !== undefined ? `變更前：${data.before}` : '', data.after !== undefined ? `變更後：${data.after}` : '',
     `時間：${formatTimestamp(new Date(payload.eventAt), configuration.timezone)}（${configuration.timezone}）`,
-    `時間來源：${payload.timestampSource}`, payload.eventType === 'member.leave' ? '離開原因：無法確認' : '操作者：無法確認',
+    `時間來源：${payload.timestampSource}`, data.moderatorId ? `操作者 ID：${data.moderatorId}` : payload.eventType === 'member.leave' ? '離開原因：無法確認' : '操作者：無法確認',
     `紀錄 ID：${job.id}`].filter(Boolean).join('\n');
   return pulseEmbed({ title: `${payload.isTest ? '【測試通知】' : ''}${titles[payload.eventType] ?? payload.eventType}`, description, timestamp: new Date(payload.eventAt),
-    kind: payload.eventType === 'member.join' ? 'memberJoin' : payload.eventType === 'member.leave' ? 'memberLeave' : payload.eventType.startsWith('voice.') ? 'voice' : 'information',
+    kind: job.moduleId === 'PT-04' ? 'moderation' : job.moduleId === 'PT-08' ? 'error' : payload.eventType === 'member.join' ? 'memberJoin' : payload.eventType === 'member.leave' ? 'memberLeave' : payload.eventType.startsWith('voice.') ? 'voice' : 'information',
     ...(data.avatar ? { thumbnail: data.avatar } : {}) });
 }
 export type NotificationStore = Pick<PostgresNotificationRepository, 'claim' | 'configuration' | 'sent' | 'cancel' | 'fail'>;
@@ -37,7 +38,8 @@ export class NotificationWorker {
   private stopped = false;
   constructor(private readonly repository: NotificationStore,
     private readonly deliver: (job: NotificationJob, message: { embeds: ReturnType<typeof pulseEmbed>[]; allowedMentions: typeof allowedMentions }) => Promise<string>,
-    private readonly enabled: (job: NotificationJob) => Promise<boolean>, private readonly ready: () => boolean) {}
+    private readonly enabled: (job: NotificationJob) => Promise<boolean>, private readonly ready: () => boolean,
+    private readonly onFailure?: (job: NotificationJob) => Promise<void>) {}
   flush(): Promise<void> {
     if (this.stopped || !this.ready()) return Promise.resolve();
     if (this.operation) return this.operation;
@@ -58,6 +60,7 @@ export class NotificationWorker {
         const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
         const known = ['50001', '50013', '10003'].includes(code);
         await this.repository.fail(job, known ? 'CHANNEL_UNAVAILABLE' : status === 429 || status >= 500 ? 'DISCORD_RETRYABLE' : 'DELIVERY_UNKNOWN', !known && (status === 429 || status >= 500));
+        if (this.onFailure) await this.onFailure(job);
         continue;
       }
       // Sent 寫回失敗時保持 Sending，不能重送已發出的通知。

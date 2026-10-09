@@ -29,6 +29,20 @@
       "when": 1791540416022,
       "tag": "0003_plain_romulus",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791546607007,
+      "tag": "0004_clumsy_firebrand",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791546929930,
+      "tag": "0005_pink_madrox",
+      "breakpoints": true
     }
   ]
 }

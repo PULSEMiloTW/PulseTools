@@ -36,6 +36,13 @@ it('通知 Payload Schema 拒絕原文及未知欄位', () => {
   expect(notificationPayloadSchema.safeParse({ ...job().payload, content: 'private-original' }).success).toBe(false);
   expect(notificationPayloadSchema.safeParse({ ...job().payload, metadata: { ...job().payload.metadata, token: 'private-secret' } }).success).toBe(false);
 });
+it('管理通知具已知操作者與案件 ID，但不包含處分原因或備註', () => {
+  const value = job(); value.moduleId = 'PT-04'; value.payload.eventType = 'moderation.case';
+  value.payload.metadata = { moderationAction: 'timeout', moderatorId: '100000000000000002', entityName: 'timeout · Succeeded', after: 'Case ID：case-uuid' };
+  const embed = notificationEmbed(value, policy).toJSON();
+  expect(embed.color).toBe(0xf59e0b); expect(embed.description).toContain('100000000000000002'); expect(embed.description).toContain('case-uuid');
+  expect(embed.description).not.toContain('操作者：無法確認');
+});
 it('Worker 單次發送並保存實際訊息 ID，同時 flush 不重複處理', async () => {
   const repository = store();
   const deliver = vi.fn().mockResolvedValue('500000000000000001');

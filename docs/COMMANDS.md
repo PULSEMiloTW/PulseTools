@@ -28,6 +28,12 @@
 | /owner lockdown | enabled 設定安全模式 |
 | /config view / export | 設定檢視、無 Secret JSON 匯出 |
 | /config reset | revision / confirm；重設本 Guild 設定，清空路由並關閉原文保存，保留歷史與模組開關 |
+| /config import | file / revision / confirm；64 KiB Discord JSON 附件，不能擴大原文捕捉 |
+| /mod warn / timeout / untimeout / kick / ban / unban / purge | PT-04；每次需 reason 與 confirm；解除需 related_case_id |
+| /mod history / detail / note | user 或 case_id，note 使用 text；L2 亦需目前原生管理權限 |
+| /mod notifications | action / enabled；管理員設定個別案件通知開關 |
+| /error list / detail / stats / acknowledge | PT-08；detail／acknowledge 使用 id，global:true 僅 Owner |
+| /system history | PT-05 啟用時每分鐘採樣，歷史保存 30 天 |
 | /config channel | purpose / channel 設定通知路由用途 |
 | /config timezone / language | 時區更新、目前 zh-TW 語言資訊 |
 | /config guild status / overview | 目前 Guild 狀態與設定 |
@@ -38,6 +44,6 @@
 
 `config` 需先啟用 PT-03。必要 Owner、Module、System 診斷管理不受業務模組停用影響。所有指令先 defer Ephemeral，避免 DB 操作超過 Interaction 首次回覆期限。
 
-`logs` 需 PT-01、DISCORD_MESSAGE_EVENTS_ENABLED=true 與 Message Content Intent；成員事件與 `welcome` 另需 Server Members Intent、DISCORD_MEMBER_EVENTS_ENABLED=true 及 PT-02。Intents 變更需手動重啟，路由／文字／事件開關立即生效。通知輸出頻道排除訊息捕捉，避免回授。`module health` 為生命週期狀態，完整健康輪詢 Phase 4；`pulse setup` 不代表完整事件驗收。`/logs status` 顯示持久化發送結果與失敗代碼。
+`logs` 需 PT-01、DISCORD_MESSAGE_EVENTS_ENABLED=true 與 Message Content Intent；成員事件與 `welcome` 另需 Server Members Intent、DISCORD_MEMBER_EVENTS_ENABLED=true 及 PT-02。Intents 變更需手動重啟，路由／文字／事件開關立即生效。通知輸出頻道排除訊息捕捉，避免回授。`module health` 探測目前 Repository，`system status` 顯示實際健康指標；`pulse setup` 不代表完整事件驗收。`/logs status` 顯示持久化發送結果與失敗代碼。選項值應從 Discord 下拉選單選取。
 
 其餘 Master Specification 指令於對應階段實作，不註冊不能執行的占位指令。

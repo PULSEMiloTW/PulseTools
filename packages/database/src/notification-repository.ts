@@ -8,7 +8,7 @@ import type { EventMetadata } from '../../shared/src/server-events.js';
 import { PulseError } from '../../shared/src/errors.js';
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 export type NotificationJob = typeof notificationOutbox.$inferSelect;
-export async function enqueueNotification(tx: Transaction, input: { guildId: string; moduleId: 'PT-01' | 'PT-02'; eventKey: string; channelId: string; payload: NotificationPayload; expiresAt: Date }) {
+export async function enqueueNotification(tx: Transaction, input: { guildId: string; moduleId: 'PT-01' | 'PT-02' | 'PT-04' | 'PT-08'; eventKey: string; channelId: string; payload: NotificationPayload; expiresAt: Date }) {
   await tx.insert(notificationOutbox).values({ ...input, payload: notificationPayloadSchema.parse(input.payload) }).onConflictDoNothing();
 }
 export class PostgresNotificationRepository {
@@ -21,7 +21,7 @@ export class PostgresNotificationRepository {
       if (!module?.enabled) throw new PulseError('MODULE_UNAVAILABLE');
       const policy = guildConfigurationSchema.parse(guild.configuration);
       const channelId = notificationChannel(policy, moduleId, type);
-      if (!channelId || (moduleId === 'PT-01' && !policy.audit.enabledEvents.includes(type))) throw new PulseError('INVALID_INPUT');
+      if (!channelId || (moduleId === 'PT-01' && !policy.audit.enabledEvents.some((event) => event === type))) throw new PulseError('INVALID_INPUT');
       const now = new Date();
       await enqueueNotification(tx, { guildId, moduleId, channelId, eventKey: `test:${randomUUID()}`,
         payload: { eventType: type, entityId: metadata.userId ?? guildId, sourceChannelId: null, eventAt: now.toISOString(), timestampSource: 'received', metadata, isTest: true }, expiresAt: new Date(now.getTime() + policy.audit.retentionDays * 86400000) });
@@ -43,7 +43,8 @@ export class PostgresNotificationRepository {
     const [module] = await this.db.select().from(moduleStates).where(and(eq(moduleStates.guildId, job.guildId), eq(moduleStates.moduleId, job.moduleId)));
     if (!module?.enabled) return undefined;
     const policy = guildConfigurationSchema.parse(guild.configuration);
-    if (job.createdAt.getTime() <= Date.now() - policy.audit.retentionDays * 86400000 || (job.moduleId === 'PT-01' && !policy.audit.enabledEvents.includes(job.payload.eventType))) return undefined;
+    if (job.moduleId === 'PT-04' && (!job.payload.metadata.moderationAction || !policy.moderation.notifyActions.includes(job.payload.metadata.moderationAction))) return undefined;
+    if (job.createdAt.getTime() <= Date.now() - policy.audit.retentionDays * 86400000 || (job.moduleId === 'PT-01' && !policy.audit.enabledEvents.some((event) => event === job.payload.eventType))) return undefined;
     return notificationChannel(policy, job.moduleId, job.payload.eventType) === job.channelId ? policy : undefined;
   }
   async sent(job: NotificationJob, messageId: string) {

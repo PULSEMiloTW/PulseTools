@@ -3,6 +3,8 @@ import { sql } from 'drizzle-orm';
 import type { GuildConfiguration, InternalRole, ModuleHealth, ModuleId } from '../../shared/src/models.js';
 import type { CaptureStatus } from '../../shared/src/audit.js';
 import type { EventMetadata, NotificationPayload } from '../../shared/src/server-events.js';
+import type { ModerationAction, CaseStatus } from '../../shared/src/moderation.js';
+import type { ErrorInput, HealthMetrics } from '../../shared/src/monitoring.js';
 
 const utc = (name: string) => timestamp(name, { withTimezone: true, mode: 'date' }).notNull().defaultNow();
 export const guilds = pgTable('guilds', {
@@ -58,9 +60,37 @@ export const serverEvents = pgTable('server_events', {
   metadata: jsonb('metadata').$type<EventMetadata>().notNull(), eventAt: utc('event_at'), receivedAt: utc('received_at'), processedAt: utc('processed_at'),
   timestampSource: text('timestamp_source').$type<'discord' | 'received'>().notNull(), attribution: text('attribution').notNull().default('無法確認'), expiresAt: utc('expires_at'),
 }, (table) => [uniqueIndex('server_event_deduplication').on(table.guildId, table.eventKey), index('server_event_time').on(table.guildId, table.eventAt), index('server_event_expiry').on(table.expiresAt)]).enableRLS();
+export const errorRecords = pgTable('error_records', {
+  id: uuid('id').defaultRandom().primaryKey(), guildId: text('guild_id').references(() => guilds.id),
+  scope: text('scope').notNull(), moduleId: text('module_id').notNull(), type: text('type').$type<ErrorInput['type']>().notNull(),
+  code: text('code').notNull(), summary: text('summary').notNull(), windowAt: utc('window_at'),
+  occurredAt: utc('occurred_at'), receivedAt: utc('received_at'), lastOccurredAt: utc('last_occurred_at'), count: integer('count').notNull().default(1),
+  status: text('status').$type<'Open' | 'Acknowledged'>().notNull().default('Open'), acknowledgedBy: text('acknowledged_by'), acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true, mode: 'date' }),
+}, (t) => [uniqueIndex('error_aggregation').on(t.scope, t.moduleId, t.type, t.code, t.windowAt), index('error_guild_time').on(t.guildId, t.lastOccurredAt), check('error_status', sql`${t.status} in ('Open','Acknowledged')`)]).enableRLS();
+export const healthSamples = pgTable('health_samples', {
+  id: uuid('id').defaultRandom().primaryKey(), guildId: text('guild_id').notNull().references(() => guilds.id),
+  metrics: jsonb('metrics').$type<HealthMetrics>().notNull(), sampledAt: utc('sampled_at'), expiresAt: utc('expires_at'),
+}, (t) => [index('health_guild_time').on(t.guildId, t.sampledAt), index('health_expiry').on(t.expiresAt)]).enableRLS();
+export const moderationCases = pgTable('moderation_cases', {
+  id: uuid('id').defaultRandom().primaryKey(), guildId: text('guild_id').notNull().references(() => guilds.id),
+  requestId: text('request_id').notNull(), targetId: text('target_id').notNull(), moderatorId: text('moderator_id').notNull(),
+  action: text('action').$type<ModerationAction>().notNull(), reason: text('reason').notNull(),
+  status: text('status').$type<CaseStatus>().notNull().default('Pending'), relatedCaseId: uuid('related_case_id'),
+  channelId: text('channel_id'), durationMinutes: integer('duration_minutes'), requestedCount: integer('requested_count'), affectedCount: integer('affected_count'),
+  errorCode: text('error_code'), createdAt: utc('created_at'), updatedAt: utc('updated_at'),
+}, (t) => [uniqueIndex('case_request').on(t.guildId, t.requestId), uniqueIndex('case_guild_id').on(t.guildId, t.id),
+  foreignKey({ columns: [t.guildId, t.relatedCaseId], foreignColumns: [t.guildId, t.id] }),
+  index('case_target_time').on(t.guildId, t.targetId, t.createdAt),
+  check('case_status', sql`${t.status} in ('Pending','Succeeded','Failed','Unknown')`),
+  check('case_action', sql`${t.action} in ('warn','timeout','untimeout','kick','ban','unban','purge')`),
+]).enableRLS();
+export const moderationNotes = pgTable('moderation_notes', {
+  id: uuid('id').defaultRandom().primaryKey(), guildId: text('guild_id').notNull(), caseId: uuid('case_id').notNull(),
+  authorId: text('author_id').notNull(), text: text('text').notNull(), createdAt: utc('created_at'),
+}, (t) => [foreignKey({ columns: [t.guildId, t.caseId], foreignColumns: [moderationCases.guildId, moderationCases.id] })]).enableRLS();
 export const notificationOutbox = pgTable('notification_outbox', {
   id: uuid('id').defaultRandom().primaryKey(), guildId: text('guild_id').notNull().references(() => guilds.id),
-  moduleId: text('module_id').$type<'PT-01' | 'PT-02'>().notNull(), eventKey: text('event_key').notNull(), channelId: text('channel_id').notNull(),
+  moduleId: text('module_id').$type<'PT-01' | 'PT-02' | 'PT-04' | 'PT-08'>().notNull(), eventKey: text('event_key').notNull(), channelId: text('channel_id').notNull(),
   payload: jsonb('payload').$type<NotificationPayload>().notNull(),
   status: text('status').$type<'Pending' | 'Sending' | 'Sent' | 'Failed' | 'Cancelled'>().notNull().default('Pending'),
   attempts: integer('attempts').notNull().default(0), nextAttemptAt: utc('next_attempt_at'), leaseAt: timestamp('lease_at', { withTimezone: true, mode: 'date' }),

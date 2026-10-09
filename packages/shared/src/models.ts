@@ -6,6 +6,7 @@ export const moduleIdSchema = z.enum(moduleIds);
 export type ModuleId = z.infer<typeof moduleIdSchema>;
 export const internalRoleSchema = z.enum(['admin', 'moderator']);
 export type InternalRole = z.infer<typeof internalRoleSchema>;
+export const moderationActions = ['warn', 'timeout', 'untimeout', 'kick', 'ban', 'unban', 'purge'] as const;
 export const messageEventTypes = ['message.create', 'message.update', 'message.delete'] as const;
 export const messageEventTypeSchema = z.enum(messageEventTypes);
 export type MessageEventType = z.infer<typeof messageEventTypeSchema>;
@@ -38,6 +39,7 @@ export const guildConfigurationSchema = z.object({
     leaveMessage: z.string().min(1).max(1000).default('👋 成員已離開【{guild}】'),
     showAccountCreated: z.boolean().default(false),
   }).strict().default({ joinEnabled: true, leaveEnabled: true, joinMessage: '👋 歡迎加入【{guild}】！', leaveMessage: '👋 成員已離開【{guild}】', showAccountCreated: false }),
+  moderation: z.object({ notifyActions: z.array(z.enum(moderationActions)).max(7).default([...moderationActions]) }).strict().default({ notifyActions: [...moderationActions] }),
 }).strict().superRefine((value, context) => {
   if (value.capture.enabled && (!value.capture.allowedChannels.length || !value.capture.privacyNotice.trim())) {
     context.addIssue({ code: 'custom', path: ['capture'], message: '啟用原文保存必須指定頻道與隱私告知。' });

@@ -27,6 +27,14 @@ export class ModuleManager {
     if (!(await this.repository.guild(guildId))?.authorized || !this.definition(id).available) return false;
     return this.isRunning(guildId, id);
   }
+  async health(actor: Actor) {
+    const states = await this.list(actor);
+    return Promise.all(states.map(async (state) => {
+      if (!state.enabled || !this.definition(state.id).available) return state;
+      try { return { ...state, health: await this.definition(state.id).health({ guildId: actor.guildId, repository: this.repository }) }; }
+      catch { return { ...state, health: 'Error' as const }; }
+    }));
+  }
   isRunning(guildId: string, id: ModuleId) { return this.runtime.get(this.key(guildId, id))?.health === 'Running'; }
   async setEnabled(actor: Actor, id: ModuleId, enabled: boolean) {
     const key = actor.guildId;

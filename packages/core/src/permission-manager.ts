@@ -17,4 +17,12 @@ export class PermissionManager {
       throw new PulseError('PERMISSION_DENIED');
     }
   }
+  async requireModerator(actor: Actor, mutation = false) {
+    await this.requireGuild(actor.guildId);
+    if (mutation && await this.repository.lockdown()) throw new PulseError('LOCKDOWN');
+    if (this.isOwner(actor.userId)) return;
+    const role = await this.repository.operator(actor.guildId, actor.userId);
+    if (role !== 'admin' && role !== 'moderator') throw new PulseError('PERMISSION_DENIED');
+    // 原生操作權限與階級由 Discord Adapter 以最新成員資料逐項檢查。
+  }
 }

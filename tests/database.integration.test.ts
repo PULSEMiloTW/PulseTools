@@ -19,6 +19,8 @@ import type { MessageEvent } from '../packages/shared/src/audit.js';
 import { PostgresServerEventRepository } from '../packages/database/src/server-event-repository.js';
 import { PostgresNotificationRepository } from '../packages/database/src/notification-repository.js';
 import type { ServerEvent } from '../packages/shared/src/server-events.js';
+import { PostgresModerationRepository } from '../packages/database/src/moderation-repository.js';
+import { PostgresMonitoringRepository } from '../packages/database/src/monitoring-repository.js';
 
 const sandbox = process.env.DATABASE_TEST_SCHEMA_ISOLATION === '1';
 const url = sandbox ? process.env.DATABASE_URL : process.env.TEST_DATABASE_URL;
@@ -80,6 +82,85 @@ afterAll(async () => {
   }
 });
 it('Migration 建立真實 PostgreSQL Schema', () => { expect(schemaCreated).toBe(true); });
+it('管理與監測四張表具 RLS，無匿名政策', async () => {
+  const tables = ['moderation_cases','moderation_notes','error_records','health_samples'];
+  const rows = await db.execute<{ relname: string; relrowsecurity: boolean }>(sql`select relname,relrowsecurity from pg_class where relnamespace=current_schema()::regnamespace and relname in ('moderation_cases','moderation_notes','error_records','health_samples')`);
+  expect(rows.rows).toHaveLength(tables.length); expect(rows.rows.every((r) => r.relrowsecurity)).toBe(true);
+  expect((await db.execute(sql`select * from pg_policies where schemaname=current_schema() and tablename in ('moderation_cases','moderation_notes','error_records','health_samples')`)).rows).toHaveLength(0);
+});
+it('案件持久化、並行相同指令僅建立一次、關聯與備註隔離', async () => {
+  await core.modules.setEnabled(actor(guildA), 'PT-04', true);
+  await core.modules.setEnabled(actor(guildB), 'PT-04', true);
+  const cases = new PostgresModerationRepository(db);
+  const request = { requestId: '400000000000000090', targetId: '100000000000000003', action: 'timeout' as const, durationMinutes: 1, reason: 'integration', confirmed: true };
+  const results = await Promise.all([cases.begin(actor(guildA), request), cases.begin(actor(guildA), request)]);
+  expect(results.filter((r) => r.created)).toHaveLength(1); expect(results[0]!.record.id).toBe(results[1]!.record.id);
+  const original = await cases.finish(results[0]!.record, 'Succeeded', null, null);
+  await cases.note(guildA, original.id, owner, 'case note');
+  expect((await cases.notes(guildA, original.id))).toHaveLength(1);
+  expect(await cases.detail(guildB, original.id)).toBeUndefined();
+  await expect(cases.note(guildB, original.id, owner, 'wrong guild')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  await expect(cases.begin(actor(guildB), { ...request, requestId: '400000000000000091', action: 'untimeout', relatedCaseId: original.id })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  const release = await cases.begin(actor(guildA), { ...request, requestId: '400000000000000092', action: 'untimeout', relatedCaseId: original.id });
+  expect(release.record.relatedCaseId).toBe(original.id); await cases.finish(release.record, 'Failed', 'DISCORD_50013', null);
+  expect((await cases.detail(guildA, original.id))?.status).toBe('Succeeded');
+  const reopened = testConnection();
+  try { expect((await new PostgresModerationRepository(reopened.db).detail(guildA, original.id))?.reason).toBe('integration'); } finally { await reopened.pool.end(); }
+}, 15000);
+it('Pending 案件重啟恢復 Unknown、不重新執行，Lockdown 阻止新案件', async () => {
+  const cases = new PostgresModerationRepository(db);
+  const request = { requestId: '400000000000000093', targetId: '100000000000000003', action: 'warn' as const, reason: 'integration', confirmed: true };
+  const pending = await cases.begin(actor(guildA), request); await cases.recover();
+  expect((await cases.detail(guildA, pending.record.id))?.status).toBe('Unknown');
+  expect((await cases.begin(actor(guildA), request)).created).toBe(false);
+  await repository.setLockdown(true, owner);
+  try { await expect(cases.begin(actor(guildA), { ...request, requestId: '400000000000000094' })).rejects.toMatchObject({ code: 'LOCKDOWN' }); }
+  finally { await repository.setLockdown(false, owner); }
+}, 10000);
+it('錯誤並行聚合、單次通知、確認保留次數與跨 Guild 隔離', async () => {
+  const monitoring = new PostgresMonitoringRepository(db);
+  await core.modules.setEnabled(actor(guildA), 'PT-08', true);
+  await core.configuration.setChannel(actor(guildA), 'error', '300000000000000008');
+  const input = { guildId: guildA, moduleId: 'PT-04' as const, type: 'API' as const, code: 'INTERNAL_ERROR' as const, occurredAt: new Date() };
+  const rows = await Promise.all(Array.from({ length: 4 }, () => monitoring.record(input)));
+  expect(new Set(rows.map((r) => r!.id)).size).toBe(1);
+  const id = rows[0]!.id;
+  expect((await monitoring.detail(guildA, id))?.count).toBe(4); expect(await monitoring.detail(guildB, id)).toBeUndefined();
+  expect((await db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.eventKey, `error:${id}`)))).toHaveLength(1);
+  await monitoring.acknowledge(guildA, id, owner);
+  const record = await monitoring.detail(guildA, id);
+  expect(record?.status).toBe('Acknowledged'); expect(record?.acknowledgedBy).toBe(owner); expect(record?.count).toBe(4);
+  await monitoring.record(input);
+  expect((await monitoring.detail(guildA, id))?.status).toBe('Open');
+  expect(JSON.stringify(record)).not.toContain('stack');
+  const global = await monitoring.record({ ...input, guildId: '299999999999999999' });
+  expect(global?.guildId).toBeNull(); expect(await monitoring.detail(guildA, global!.id)).toBeUndefined();
+}, 15000);
+it('管理通知同交易保存、包含已知操作者，個別開關停止新通知並取消舊路由', async () => {
+  const cases = new PostgresModerationRepository(db), notifications = new PostgresNotificationRepository(db);
+  await core.configuration.setChannel(actor(guildA), 'moderation', '300000000000000009');
+  const request = { requestId: '400000000000000095', targetId: '100000000000000003', action: 'warn' as const, reason: 'private-case-reason', confirmed: true };
+  const first = await cases.begin(actor(guildA), request); await cases.finish(first.record, 'Succeeded', null, null);
+  const [job] = await db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.eventKey, `case:${first.record.id}`));
+  expect(job?.moduleId).toBe('PT-04'); expect(job?.payload.metadata.moderatorId).toBe(owner); expect(JSON.stringify(job)).not.toContain('private-case-reason');
+  expect(await notifications.configuration(job!)).toBeDefined();
+  const policy = await core.configuration.view(actor(guildA));
+  await core.configuration.replace(actor(guildA), { ...policy.configuration, moderation: { notifyActions: policy.configuration.moderation.notifyActions.filter((a) => a !== 'warn') } }, policy.revision);
+  expect(await notifications.configuration(job!)).toBeUndefined();
+  const second = await cases.begin(actor(guildA), { ...request, requestId: '400000000000000096' }); await cases.finish(second.record, 'Succeeded', null, null);
+  expect((await db.select().from(schema.notificationOutbox).where(eq(schema.notificationOutbox.eventKey, `case:${second.record.id}`)))).toHaveLength(0);
+}, 15000);
+it('健康樣本持久化、模組停用不採樣、期限清理不影響案件', async () => {
+  const monitoring = new PostgresMonitoringRepository(db), cases = new PostgresModerationRepository(db);
+  await core.modules.setEnabled(actor(guildA), 'PT-05', true);
+  const metrics = { startedAt: new Date().toISOString(), uptimeSeconds: 120, botStatus: 'Online' as const, gatewayPingMs: 50, apiLatencyMs: 10, databaseHealthy: true, databaseLatencyMs: 3, cpuPercent: 1, rssBytes: 1000, heapBytes: 500, guildCount: 2, authorizedGuildCount: 2, activeModuleCount: 3, errorCount: 4, pendingNotifications: 0, failedNotifications: 0 };
+  await monitoring.sample(guildA, metrics); expect(await monitoring.history(guildA)).toHaveLength(1); expect(await monitoring.history(guildB)).toHaveLength(0);
+  await core.modules.setEnabled(actor(guildA), 'PT-05', false);
+  await monitoring.sample(guildA, metrics); expect(await monitoring.history(guildA)).toHaveLength(1);
+  const count = await cases.count(guildA);
+  await db.update(schema.healthSamples).set({ expiresAt: new Date(0) }).where(eq(schema.healthSamples.guildId, guildA)); await monitoring.prune();
+  expect(await monitoring.history(guildA)).toHaveLength(0); expect(await cases.count(guildA)).toBe(count);
+}, 10000);
 it('原文及 Audit 表啟用 RLS 且沒有匿名 API 讀取政策', async () => {
   const result = await db.execute<{ relname: string; relrowsecurity: boolean }>(sql`select relname, relrowsecurity from pg_class where relnamespace = current_schema()::regnamespace and relname in ('audit_events', 'message_snapshots', 'message_versions')`);
   expect(result.rows).toHaveLength(3);

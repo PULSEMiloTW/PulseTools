@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { auditEventTypeSchema, serverEventTypes, snowflake, type GuildConfiguration } from './models.js';
+import { auditEventTypes, serverEventTypes, snowflake, moderationActions, type GuildConfiguration } from './models.js';
 
 export const eventMetadataSchema = z.object({
   guildName: z.string().max(100).optional(), entityName: z.string().max(100).optional(),
@@ -8,6 +8,7 @@ export const eventMetadataSchema = z.object({
   memberCount: z.number().int().nonnegative().nullable().optional(),
   accountCreatedAt: z.iso.datetime().optional(),
   before: z.string().max(1500).optional(), after: z.string().max(1500).optional(),
+  moderationAction: z.enum(moderationActions).optional(), moderatorId: snowflake.optional(),
 }).strict();
 export type EventMetadata = z.infer<typeof eventMetadataSchema>;
 export const serverEventSchema = z.object({
@@ -17,13 +18,15 @@ export const serverEventSchema = z.object({
 }).strict();
 export type ServerEvent = z.infer<typeof serverEventSchema>;
 export const notificationPayloadSchema = z.object({
-  eventType: auditEventTypeSchema, entityId: snowflake, sourceChannelId: snowflake.nullable(),
+  eventType: z.enum([...auditEventTypes, 'moderation.case', 'error.record']), entityId: snowflake, sourceChannelId: snowflake.nullable(),
   eventAt: z.iso.datetime(), timestampSource: z.enum(['discord', 'received']), metadata: eventMetadataSchema,
   isTest: z.boolean().optional(),
 }).strict();
 export type NotificationPayload = z.infer<typeof notificationPayloadSchema>;
 export const categoryFor = (type: string) => type.startsWith('member.') ? 'member' : type.startsWith('message.') ? 'message' : type.startsWith('voice.') ? 'voice' : 'system';
-export function notificationChannel(configuration: GuildConfiguration, moduleId: 'PT-01' | 'PT-02', type: string) {
+export function notificationChannel(configuration: GuildConfiguration, moduleId: 'PT-01' | 'PT-02' | 'PT-04' | 'PT-08', type: string) {
+  if (moduleId === 'PT-04') return configuration.channels.moderation;
+  if (moduleId === 'PT-08') return configuration.channels.error;
   if (moduleId === 'PT-02') return type === 'member.join' && configuration.welcome.joinEnabled ? configuration.welcome.joinChannel : type === 'member.leave' && configuration.welcome.leaveEnabled ? configuration.welcome.leaveChannel : undefined;
   return configuration.channels[categoryFor(type)];
 }
