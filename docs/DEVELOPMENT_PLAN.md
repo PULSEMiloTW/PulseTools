@@ -27,4 +27,4 @@
 
 ## 驗收紀錄
 
-Phase 1 基礎驗收與 Phase 2 原文核心流程已有實際紀錄（PHASE_1_REPORT.md、PHASE_2_REPORT.md）。Phase 3 已實作，檢查及手動通知驗收見 PHASE_3_REPORT.md；真實通知與各類 Gateway 事件仍待使用者操作。Phase 4–7 尚未開始，不將基礎版本宣稱為完整產品。
+Phase 1 基礎驗收與 Phase 2 原文核心流程已有實際紀錄（PHASE_1_REPORT.md、PHASE_2_REPORT.md）。Phase 3 代表性真實事件與通知驗收通過，證據及未逐項實測的範圍見 PHASE_3_REPORT.md。Phase 4–7 尚未開始，不將基礎版本宣稱為完整產品。

@@ -1,6 +1,6 @@
 # Phase 3 — 成員及伺服器即時事件
 
-日期：2026-10-09。原始碼與資料庫整合完成；真實語音事件與通知發送已驗證，其他事件的手動驗收進度見下方。尚未進入 Phase 4。
+日期：2026-10-09。原始碼、資料庫整合與代表性真實事件／通知驗收通過；個別事件的驗證範圍見下方。尚未進入 Phase 4。
 
 ## 範圍
 
@@ -48,7 +48,8 @@ GuildVoiceStates / GuildInvites 隨新版啟動載入。邀請事件另需對來
 - 使用者已手動載入新版。歡樂Ma屋的真實 `voice.join`、`voice.switch`、`voice.leave` 各一筆已保存；對應三筆 PT-01 Outbox 均為 `Sent`、`isTest=false`，無錯誤碼。使用者確認操作完成，事件入庫到自動通知的完整流程通過。
 - 歡樂Ma屋 PT-02 加入與離開測試通知各一筆、Pulse Studio HQ PT-01 訊息測試通知一筆均為 `Sent`，無錯誤碼。測試通知不視為真實成員或訊息事件。
 - 後續驗收：歡樂Ma屋真實 `member.join`、`member.leave` 各一筆，兩種事件的 PT-01 與 PT-02 通知均為 `Sent`；另有兩筆 `member.role.add` 與成功的 PT-01 通知。Pulse Studio HQ 真實 `member.join` 一筆，其 PT-01 與 PT-02 通知均為 `Sent`。兩個 Guild 各有真實 `invite.create`、`invite.delete` 與成功的 PT-01 通知；上述均 `isTest=false`、無錯誤碼。
-- 歡樂Ma屋另有一筆真實 `channel.update` 紀錄。角色本身建立／更新／刪除及重啟後設定與通知持久化仍待手動驗證，尚未宣稱 Phase 3 全部驗收完成。
+- 最後一輪：歡樂Ma屋於 Asia/Taipei 19:40:46／19:40:47 新增真實語音加入／離開，19:41:07／19:41:13 新增角色建立／刪除；加上先前角色更新，三種角色事件已有實際紀錄。對應通知全部 `Sent`、無錯誤碼。使用者回報手動重啟驗收完成；先前路由設定仍存在，重啟後新增事件與通知流程通過。Codex 未代為重啟，也未取得獨立程序啟動時間證據。
+- Phase 3 代表性實際事件、跨 Guild 路由、歡迎通知與重啟流程驗收通過，可進入 Phase 4。`channel.update` 有實際紀錄；頻道建立／刪除／權限、角色權限與 Guild 基礎設定變更未逐項實測，亦未在真實 Discord 人為製造重試或中斷發送；這些行為的驗證仍限於原始碼檢查與既有自動測試，不宣稱全部事件與故障情境均已實測。
 - `direction` 在 Discord 選單顯示為「加入」與「離開」；下方 `join` / `leave` 為內部值。操作時應從下拉選單選取，不能直接貼上內部值當成已選定的選項。
 
 1. Developer Portal → PulseTools → Bot → Privileged Gateway Intents，開啟 **Server Members Intent** 並儲存。保持 Message Content Intent 啟用。
