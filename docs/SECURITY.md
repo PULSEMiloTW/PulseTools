@@ -1,0 +1,14 @@
+# 安全
+
+- .env 與執行檔案不進 Git；.env.example 機密值全為空白。
+- 錯誤只輸出安全代碼或本程式建立的設定名稱訊息，不打印第三方例外、HTTP Request、DB URL 或訊息原文。
+- 每個敏感指令後端驗證 Owner / Guild / 內部角色 / Discord 權限；不得只靠指令顯示權限。
+- Owner Allowlist 外不蒐集普通活動資料；新 Guild 預設原文保存停用。
+- Guild 查詢及設定都帶 Guild ID；L1 權限要求相同 Guild 的內部授權與 Discord Administrator。
+- 設定 Schema 拒絕不支援欄位，避免以配置匯出混入 Secret。
+- 主動回覆禁止 mention，使用 Ephemeral，遵守 Embed 限制。
+- DB 設定寫入與歷史在同一交易，revision 避免競爭覆蓋。
+- PostgreSQL advisory lock 防止重複 Bot；失去連線時停止，避免雙重處理。
+- Drizzle Kit 間接開發依賴的 esbuild 使用 override 至 ^0.25.0，避免已知開發伺服器漏洞；不啟動 Drizzle Studio 對外服務。
+
+OAuth2 Session / CSRF、Retention、R2 安全串流等尚未實作，不能對外部署或宣稱完整安全驗收。後續實作須遵守 Master Prompt 與 PT-10 安全狀態機。

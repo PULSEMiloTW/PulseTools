@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "rootDir": ".", "outDir": "dist", "declaration": true, "sourceMap": true },
+  "exclude": ["tests", "node_modules", "dist", "drizzle.config.ts"]
+}

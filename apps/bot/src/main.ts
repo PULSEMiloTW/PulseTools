@@ -1,0 +1,70 @@
+import { config } from 'dotenv';
+import type { PoolClient } from 'pg';
+import { ActivityType, Client, Events, GatewayIntentBits } from 'discord.js';
+import { connectDatabase } from '../../../packages/database/src/connection.js';
+import { PostgresRepository } from '../../../packages/database/src/repository.js';
+import { createCore } from '../../../packages/core/src/index.js';
+import { parseEnvironment, optionalCapabilities } from '../../../packages/shared/src/environment.js';
+import { handleCommand } from './interaction-handler.js';
+import { safeErrorCode } from '../../../packages/shared/src/errors.js';
+
+// 開發及編譯後皆從專案根啟動；不搜尋其他專案的 .env。
+config({ path: '.env', quiet: true });
+const startedAt = new Date();
+let shuttingDown = false;
+async function main() {
+  const env = parseEnvironment(process.env);
+  const { pool, db } = connectDatabase(env.DATABASE_URL);
+  const repository = new PostgresRepository(db);
+  const client = new Client({ intents: [GatewayIntentBits.Guilds], allowedMentions: { parse: [], repliedUser: false } });
+  const core = createCore(repository, env.DISCORD_OWNER_ID);
+  // 保留連線持有 advisory lock，避免同一資料庫啟動兩個 Bot 並重複處理事件。
+  let lease: PoolClient | undefined;
+  const shutdown = async (exitCode: number) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    const timer = setTimeout(() => process.exit(exitCode || 1), 10000).unref();
+    client.destroy();
+    await core.modules.shutdown();
+    lease?.release();
+    await pool.end();
+    clearTimeout(timer);
+    process.exitCode = exitCode;
+  };
+  pool.on('error', () => { console.error('[PulseTools] 資料庫連線異常，安全停止。'); void shutdown(1); });
+  process.once('SIGINT', () => { void shutdown(0); });
+  process.once('SIGTERM', () => { void shutdown(0); });
+  try {
+    lease = await pool.connect();
+    lease.on('error', () => { console.error('[PulseTools] Bot 程序鎖連線中斷，安全停止。'); void shutdown(1); });
+    const lock = await lease.query<{ locked: boolean }>('select pg_try_advisory_lock(735902, 1) as locked');
+    if (!lock.rows[0]?.locked) throw new Error('已有 PulseTools Bot 使用此資料庫；請勿重複啟動。');
+    await repository.authorizedGuilds();
+    await core.modules.restore();
+    const capabilities = optionalCapabilities(env);
+    console.info(`[PulseTools] 選用設定：R2 ${capabilities.r2Configured ? '已設定（模組尚未開放）' : '未設定'}；OAuth ${capabilities.oauthConfigured ? '已設定（Phase 6 開放）' : '未設定'}。`);
+    const presence = () => client.user?.setPresence({ status: 'online', activities: [{ name: 'Powered by Pulse Studio', type: ActivityType.Watching }] });
+    client.once(Events.ClientReady, (ready) => {
+      if (ready.application.id !== env.DISCORD_CLIENT_ID) {
+        console.error('[PulseTools] Bot Token 與 Application ID 不一致，停止啟動。'); void shutdown(1); return;
+      }
+      presence();
+      console.info(`[PulseTools] Discord 已連線 · Bot ${ready.user.id} · Guild ${ready.guilds.cache.size} · ${new Date().toISOString()}`);
+    });
+    client.on(Events.ShardResume, presence);
+    client.on(Events.InteractionCreate, (interaction) => {
+      if (!shuttingDown && interaction.isChatInputCommand()) void handleCommand(interaction, { startedAt, client, core });
+    });
+    client.on(Events.Error, () => console.error('[PulseTools] Gateway 錯誤；discord.js 將處理重連。'));
+    client.on(Events.Warn, () => console.warn('[PulseTools] Gateway 警告，請檢查連線與權限。'));
+    await client.login(env.DISCORD_BOT_TOKEN);
+  } catch (error) {
+    console.error(`[PulseTools] 啟動失敗：${safeErrorCode(error)}。請執行 npm run doctor；確認 migration、資料庫、Bot 設定與是否重複啟動。`);
+    await shutdown(1);
+  }
+}
+main().catch((error: unknown) => {
+  // 環境驗證訊息由本程式建立，僅包含變數名稱。
+  console.error(error instanceof Error && error.message.startsWith('缺少或不合法') ? error.message : '[PulseTools] 無法初始化。');
+  process.exitCode = 1;
+});
