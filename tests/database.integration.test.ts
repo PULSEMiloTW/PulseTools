@@ -96,6 +96,10 @@ it('案件持久化、並行相同指令僅建立一次、關聯與備註隔離'
   const results = await Promise.all([cases.begin(actor(guildA), request), cases.begin(actor(guildA), request)]);
   expect(results.filter((r) => r.created)).toHaveLength(1); expect(results[0]!.record.id).toBe(results[1]!.record.id);
   const original = await cases.finish(results[0]!.record, 'Succeeded', null, null);
+  expect((await cases.choices(guildA, request.targetId, original.id.slice(0, 8), 'timeout')).map((r) => r.id)).toEqual([original.id]);
+  expect(await cases.choices(guildB, request.targetId, original.id, 'timeout')).toHaveLength(0);
+  expect(await cases.choices(guildA, owner, original.id, 'timeout')).toHaveLength(0);
+  expect(await cases.choices(guildA, request.targetId, original.id, 'ban')).toHaveLength(0);
   await cases.note(guildA, original.id, owner, 'case note');
   expect((await cases.notes(guildA, original.id))).toHaveLength(1);
   expect(await cases.detail(guildB, original.id)).toBeUndefined();

@@ -24,6 +24,7 @@ import { PostgresMonitoringRepository } from '../../../packages/database/src/mon
 import { ErrorService } from '../../../packages/core/src/error-service.js';
 import { HealthMonitor } from '../../../packages/core/src/health-monitor.js';
 import type { ErrorInput } from '../../../packages/shared/src/monitoring.js';
+import { handleModerationAutocomplete } from './moderation-autocomplete.js';
 
 // 開發及編譯後皆從專案根啟動；不搜尋其他專案的 .env。
 config({ path: '.env', quiet: true });
@@ -145,6 +146,11 @@ async function main() {
     });
     client.on(Events.ShardResume, presence);
     client.on(Events.InteractionCreate, (interaction) => {
+      if (!shuttingDown && interaction.isAutocomplete()) {
+        const operation = handleModerationAutocomplete(interaction, moderation);
+        commandsInFlight.add(operation);
+        void operation.finally(() => commandsInFlight.delete(operation));
+      }
       if (!shuttingDown && interaction.isChatInputCommand()) {
         const operation = handleCommand(interaction, { startedAt, client, core, audit, moderation, errors, health, recordError, notifications, wakeNotifications: wake, messageEventsEnabled: env.DISCORD_MESSAGE_EVENTS_ENABLED, memberEventsEnabled: env.DISCORD_MEMBER_EVENTS_ENABLED });
         commandsInFlight.add(operation);

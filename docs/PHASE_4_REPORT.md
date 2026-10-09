@@ -32,12 +32,20 @@
 
 ## 驗證
 
-- Strict TypeScript、79 項離線測試與 build 通過，包含 Purge 近期／釘選／舊訊息篩選與實際刪除數量。
+- Strict TypeScript、83 項離線測試與 build 通過，包含 Purge 篩選、案件選單權限／對象／UUID／時間／顯示上限及選定對象後的明細與備註核對。
 - 27 項 PostgreSQL 隔離 Schema 整合測試通過，涵蓋所有 migrations、四張表 RLS、並行案件去重、持久與關聯案件、跨 Guild 備註、Lockdown、Unknown 恢復、管理通知開關與安全 payload、並行錯誤聚合／單次通知／重新開啟、健康採樣及期限清理。
 - 所有管理 transport 測試均為 mock／純驗證；未對真實 Discord 成員處分、清理訊息、發送測試通知或重啟 Bot。CI 執行結果未檢查，不宣稱 CI 通過。
 - 專用 Supabase 已套用 0004／0005，四張新增表及 RLS 已唯讀核對，doctor 通過。九個頂層指令已更新至歡樂Ma屋（1317365273573064714）及 Pulse Studio HQ（1557255271758303252）。未修改 .env、既有 Guild 路由或模組開關；新版程序仍待使用者手動重啟。
 
 ## 手動啟用與驗收
+
+目前實際進度：兩 Guild PT-04／PT-05／PT-08 均為 Running，健康樣本已持續保存。Pulse Studio HQ 有兩筆成功 Warn、兩筆備註，以及一筆成功 Timeout 和一筆成功 Untimeout。使用者已手動操作，Codex 僅唯讀核對；未將此證據擴大宣稱為 Kick／Ban／Purge 或新增選單的真實驗收。
+
+### 案件選擇體驗更新
+
+`/mod detail`、`/mod note` 先選 user，再點 case_id 欄位；`/mod untimeout` 先選 user 再點 related_case_id，`/mod unban` 先填 user_id 再選 related_case_id。動態選單包含完整案件 UUID、操作、Guild 時區時間與狀態；最多顯示最近 25 筆符合條件的案件，輸入 UUID 前綴可搜尋較舊案件。解除指令僅列出同 Guild、同對象且成功的原 timeout／ban 案件。這是案件欄位的選單，不會在只選人時額外發送公開訊息；沒有權限／未選人時不顯示案件。原因與備註不進選單。
+
+明細與備註執行時重新核對選定對象及案件 ID，解除處分維持既有後端檢查。選單不是授權憑證，也不代表目前 Discord 處分仍有效；例如已到期禁言仍會在實際執行時被目標檢查拒絕。新增程式需手動重啟載入，未代為重啟。
 
 1. 使用者 Ctrl+C 停止，再雙擊根目錄 `00_啟動PulseTools.cmd`。本階段不新增 Gateway Intents 或修改 .env。
 2. 在測試 Guild 各自啟用 PT-04、PT-05、PT-08。用 `/module health` 查看實際 DB 探測。

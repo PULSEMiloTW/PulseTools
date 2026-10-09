@@ -16,8 +16,8 @@ export const commands = [
     .addSubcommand((s) => s.setName('acknowledge').setDescription('確認錯誤，保留原紀錄').addStringOption((o) => o.setName('id').setDescription('Error UUID').setRequired(true)).addBooleanOption((o) => o.setName('global').setDescription('Owner 全域診斷'))),
   withModerationActions(base('mod', '管理案件與經確認的 Discord 管理操作')
     .addSubcommand((s) => s.setName('history').setDescription('查看此 Guild 的對象案件').addUserOption((o) => o.setName('user').setDescription('對象').setRequired(true)))
-    .addSubcommand((s) => s.setName('detail').setDescription('私密查看案件與備註').addStringOption((o) => o.setName('case_id').setDescription('案件 UUID').setRequired(true)))
-    .addSubcommand((s) => s.setName('note').setDescription('新增案件備註').addStringOption((o) => o.setName('case_id').setDescription('案件 UUID').setRequired(true)).addStringOption((o) => o.setName('text').setDescription('備註；請勿填入機密').setRequired(true).setMaxLength(1000)))
+    .addSubcommand((s) => s.setName('detail').setDescription('私密查看案件與備註').addUserOption((o) => o.setName('user').setDescription('先選擇案件對象').setRequired(true)).addStringOption((o) => o.setName('case_id').setDescription('選擇此人的案件 ID 與時間').setRequired(true).setAutocomplete(true)))
+    .addSubcommand((s) => s.setName('note').setDescription('新增案件備註').addUserOption((o) => o.setName('user').setDescription('先選擇案件對象').setRequired(true)).addStringOption((o) => o.setName('case_id').setDescription('選擇此人的案件 ID 與時間').setRequired(true).setAutocomplete(true)).addStringOption((o) => o.setName('text').setDescription('備註；請勿填入機密').setRequired(true).setMaxLength(1000)))
     .addSubcommand((s) => s.setName('notifications').setDescription('管理員切換個別案件操作的通知')
       .addStringOption((o) => o.setName('action').setDescription('案件操作').setRequired(true).addChoices(...moderationActions.map((value) => ({ name: value, value }))))
       .addBooleanOption((o) => o.setName('enabled').setDescription('是否通知').setRequired(true)))
@@ -27,7 +27,7 @@ export const commands = [
       else if (action === 'unban') s.addStringOption((o) => o.setName('user_id').setDescription('已封鎖對象 ID').setRequired(true));
       else s.addUserOption((o) => o.setName('user').setDescription('此 Guild 成員').setRequired(true));
       if (action === 'timeout') s.addIntegerOption((o) => o.setName('minutes').setDescription('禁言分鐘數，上限 28 天').setRequired(true).setMinValue(1).setMaxValue(40320));
-      if (action === 'unban' || action === 'untimeout') s.addStringOption((o) => o.setName('related_case_id').setDescription('原成功封鎖／禁言案件 UUID').setRequired(true));
+      if (action === 'unban' || action === 'untimeout') s.addStringOption((o) => o.setName('related_case_id').setDescription('選擇此人的原成功案件 ID 與時間').setRequired(true).setAutocomplete(true));
       return s.addStringOption((o) => o.setName('reason').setDescription('管理原因；請勿填入機密').setRequired(true).setMinLength(1).setMaxLength(400)).addBooleanOption((o) => o.setName('confirm').setDescription('明確確認本次操作').setRequired(true));
     })),
   base('welcome', '成員加入與離開通知')

@@ -30,7 +30,7 @@
 | /config reset | revision / confirm；重設本 Guild 設定，清空路由並關閉原文保存，保留歷史與模組開關 |
 | /config import | file / revision / confirm；64 KiB Discord JSON 附件，不能擴大原文捕捉 |
 | /mod warn / timeout / untimeout / kick / ban / unban / purge | PT-04；每次需 reason 與 confirm；解除需 related_case_id |
-| /mod history / detail / note | user 或 case_id，note 使用 text；L2 亦需目前原生管理權限 |
+| /mod history / detail / note | 先選 user；detail／note 的 case_id 選單顯示該人的案件 ID、操作、時間與狀態，note 使用 text；L2 亦需目前原生管理權限 |
 | /mod notifications | action / enabled；管理員設定個別案件通知開關 |
 | /error list / detail / stats / acknowledge | PT-08；detail／acknowledge 使用 id，global:true 僅 Owner |
 | /system history | PT-05 啟用時每分鐘採樣，歷史保存 30 天 |

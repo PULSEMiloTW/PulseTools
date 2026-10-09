@@ -17,7 +17,7 @@ beforeEach(async () => {
   await core.guilds.setAuthorization(owner, guildId, '測試', true);
   await core.guilds.setOperator(owner, guildId, moderator, 'moderator');
   await core.modules.setEnabled({ ...actor, userId: owner }, 'PT-04', true);
-  store = { begin: vi.fn().mockResolvedValue({ record, created: true }), finish: vi.fn().mockImplementation(async (r, status, code, affected) => ({ ...r, status, errorCode: code, affectedCount: affected })), history: vi.fn().mockResolvedValue([]), detail: vi.fn().mockResolvedValue(record), notes: vi.fn().mockResolvedValue([]), note: vi.fn().mockResolvedValue(undefined) };
+  store = { choices: vi.fn().mockResolvedValue([]), begin: vi.fn().mockResolvedValue({ record, created: true }), finish: vi.fn().mockImplementation(async (r, status, code, affected) => ({ ...r, status, errorCode: code, affectedCount: affected })), history: vi.fn().mockResolvedValue([]), detail: vi.fn().mockResolvedValue(record), notes: vi.fn().mockResolvedValue([]), note: vi.fn().mockResolvedValue(undefined) };
   transport = { authorize: vi.fn().mockResolvedValue(undefined), validate: vi.fn().mockResolvedValue(undefined), execute: vi.fn().mockResolvedValue(null) };
   service = new ModerationService(core, store, transport);
 });
@@ -67,6 +67,15 @@ it('讀取與備註仍檢查原生權限、Guild 授權及 UUID', async () => {
   await expect(service.note(actor, 'invalid', 'note')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   await core.guilds.setAuthorization(owner, guildId, '測試', false);
   await expect(service.detail(actor, record.id)).rejects.toMatchObject({ code: 'GUILD_DENIED' });
+});
+it('案件選單需授權與有效對象，讀取及備註不能以其他對象的 ID 越過選擇', async () => {
+  await service.choices(actor, targetId, '0000', 'timeout');
+  expect(store.choices).toHaveBeenCalledWith(guildId, targetId, '0000', 'timeout');
+  expect(await service.choices(actor, 'invalid', '')).toEqual([]);
+  await expect(service.choices({ ...actor, userId: targetId }, targetId, '')).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+  await expect(service.detail(actor, record.id, owner)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  await expect(service.note(actor, record.id, 'note', owner)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+  expect(store.note).not.toHaveBeenCalled();
 });
 it('Owner 原生階級限制不能繞過，目標與 Bot 階級檢查', () => {
   const a = { id: moderator, isGuildOwner: false, higherThanTarget: true }, b = { id: owner, higherThanTarget: true }, t = { id: targetId, isGuildOwner: false, isBot: false, administrator: false };

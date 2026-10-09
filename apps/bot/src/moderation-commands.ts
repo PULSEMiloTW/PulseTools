@@ -7,11 +7,11 @@ export async function moderationCommand(interaction: ChatInputCommandInteraction
   const sub = interaction.options.getSubcommand();
   const timezone = await service.timezone(actor);
   if (sub === 'note') {
-    await service.note(actor, interaction.options.getString('case_id', true), interaction.options.getString('text', true));
+    await service.note(actor, interaction.options.getString('case_id', true), interaction.options.getString('text', true), interaction.options.getUser('user', true).id);
     return '案件備註已新增；原始案件與處分結果保留。';
   }
   if (sub === 'detail') {
-    const { record, notes } = await service.detail(actor, interaction.options.getString('case_id', true));
+    const { record, notes } = await service.detail(actor, interaction.options.getString('case_id', true), interaction.options.getUser('user', true).id);
     return `Case ID：${record.id}\n對象：${record.targetId}\n管理者：${record.moderatorId}\n操作：${record.action}\n狀態：${record.status}\n原因：${record.reason}\n時間：${formatTimestamp(record.createdAt, timezone)}（${timezone}）\n關聯案件：${record.relatedCaseId ?? '無'}\n錯誤碼：${record.errorCode ?? '無'}\n實際清理數：${record.affectedCount ?? '不適用'}\n備註：\n${notes.map((n) => `${formatTimestamp(n.createdAt, timezone)} · ${n.authorId} · ${n.text}`).join('\n') || '無'}`;
   }
   if (sub === 'history') return (await service.history(actor, interaction.options.getUser('user', true).id)).map((c) => `${c.id} · ${c.action} · ${c.status} · ${formatTimestamp(c.createdAt, timezone)}（${timezone}）`).join('\n') || '此 Guild 沒有該對象的案件。';

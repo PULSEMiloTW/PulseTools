@@ -7,6 +7,7 @@ import { PulseError } from '../../shared/src/errors.js';
 import { enqueueNotification } from './notification-repository.js';
 export type ModerationCase = typeof moderationCases.$inferSelect;
 export interface ModerationStore {
+  choices(guildId: string, targetId: string, prefix: string, action?: 'timeout' | 'ban'): Promise<ModerationCase[]>;
   begin(actor: Actor, request: ModerationRequest): Promise<{ record: ModerationCase; created: boolean }>;
   finish(record: ModerationCase, status: Exclude<CaseStatus, 'Pending'>, code: string | null, affected: number | null): Promise<ModerationCase>;
   history(guildId: string, targetId: string): Promise<ModerationCase[]>;
@@ -55,6 +56,11 @@ export class PostgresModerationRepository implements ModerationStore {
     });
   }
   async history(guildId: string, targetId: string) { return this.db.select().from(moderationCases).where(and(eq(moderationCases.guildId, guildId), eq(moderationCases.targetId, targetId))).orderBy(desc(moderationCases.createdAt)).limit(10); }
+  async choices(guildId: string, targetId: string, prefix: string, action?: 'timeout' | 'ban') {
+    return this.db.select().from(moderationCases).where(and(eq(moderationCases.guildId, guildId), eq(moderationCases.targetId, targetId),
+      sql`cast(${moderationCases.id} as text) like ${prefix + '%'}`, action ? eq(moderationCases.action, action) : undefined,
+      action ? eq(moderationCases.status, 'Succeeded') : undefined)).orderBy(desc(moderationCases.createdAt)).limit(25);
+  }
   async detail(guildId: string, id: string) { return (await this.db.select().from(moderationCases).where(and(eq(moderationCases.guildId, guildId), eq(moderationCases.id, id))))[0]; }
   async notes(guildId: string, id: string) { return this.db.select().from(moderationNotes).where(and(eq(moderationNotes.guildId, guildId), eq(moderationNotes.caseId, id))).orderBy(desc(moderationNotes.createdAt)).limit(10); }
   async note(guildId: string, id: string, authorId: string, text: string) {

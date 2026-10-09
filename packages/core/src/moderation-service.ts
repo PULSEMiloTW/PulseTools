@@ -52,16 +52,26 @@ export class ModerationService {
     if (!guild?.authorized) throw new PulseError('GUILD_DENIED');
     return guildConfigurationSchema.parse(guild.configuration).timezone;
   }
-  async detail(actor: Actor, id: string) {
+  async detail(actor: Actor, id: string, targetId?: string) {
     await this.authorize(actor);
     if (!z.uuid().safeParse(id).success) throw new PulseError('INVALID_INPUT');
     const record = await this.store.detail(actor.guildId, id);
-    if (!record) throw new PulseError('INVALID_INPUT');
+    if (!record || (targetId !== undefined && (!snowflake.safeParse(targetId).success || record.targetId !== targetId))) throw new PulseError('INVALID_INPUT');
     return { record, notes: await this.store.notes(actor.guildId, id) };
   }
-  async note(actor: Actor, id: string, text: string) {
+  async note(actor: Actor, id: string, text: string, targetId?: string) {
     await this.authorize(actor, true);
     if (!z.uuid().safeParse(id).success || !text.trim() || text.length > 1000) throw new PulseError('INVALID_INPUT');
+    if (targetId !== undefined) {
+      const record = await this.store.detail(actor.guildId, id);
+      if (!snowflake.safeParse(targetId).success || record?.targetId !== targetId) throw new PulseError('INVALID_INPUT');
+    }
     await this.store.note(actor.guildId, id, actor.userId, text.trim());
+  }
+  async choices(actor: Actor, targetId: string, prefix: string, action?: 'timeout' | 'ban') {
+    await this.authorize(actor);
+    if (!snowflake.safeParse(targetId).success || !/^[a-f0-9-]{0,36}$/i.test(prefix)) return [];
+    const timezone = guildConfigurationSchema.parse((await this.core.repository.guild(actor.guildId))?.configuration).timezone;
+    return { records: await this.store.choices(actor.guildId, targetId, prefix.toLowerCase(), action), timezone };
   }
 }
