@@ -1,3 +1,4 @@
+import { Ready } from "./Common";
 import { useEffect, useRef, useState } from "react";
 import { randomInt } from "../lib/core";
 import { useReducedMotion, Copy } from "./Common";
@@ -11,7 +12,7 @@ export default function Coin() {
     reduced = useReducedMotion();
   useEffect(() => () => clearTimeout(timer.current), []);
   return (
-    <>
+    <Ready>
       <div className="coin-layout panel">
         <div className="coin-options">
           {labels.map((x, i) => (
@@ -99,6 +100,6 @@ export default function Coin() {
         <h2>怎麼使用</h2>
         <p>可自訂兩面文字，每次獨立二選一。過去的結果不會影響下一次機率。</p>
       </section>
-    </>
+    </Ready>
   );
 }

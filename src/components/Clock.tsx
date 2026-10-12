@@ -1,3 +1,4 @@
+import { Ready } from "./Common";
 import { useEffect, useRef, useState } from "react";
 import { clockParts } from "../lib/core";
 import { read, write } from "../lib/storage";
@@ -71,7 +72,7 @@ export default function Clock() {
     }
   };
   return (
-    <>
+    <Ready>
       <div className="clock-controls">
         <label>
           時區（可輸入中英文城市）
@@ -186,6 +187,6 @@ export default function Clock() {
           或原子鐘校準；各時區依瀏覽器時區規則顯示。
         </p>
       </section>
-    </>
+    </Ready>
   );
 }

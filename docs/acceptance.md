@@ -2,7 +2,7 @@
 
 2026-10-12（Asia/Taipei）。最終命令結果與公開驗收在交付前更新。
 
-本機 `npm run typecheck`：0 errors／warnings；`npm test`：8 passed；`npm run build`：14 靜態頁成功；`npm run test:e2e`：7 passed。瀏覽器 Microsoft Edge headless。專案未設定 lint。
+本機 `npm run typecheck`：0 errors／warnings；`npm test`：8 passed；`npm run build`：14 靜態頁成功；`npm run test:e2e`：8 passed（含慢速腳本載入與鍵盤焦點）。瀏覽器 Microsoft Edge headless。專案未設定 lint。
 
 ## 覆蓋內容
 
@@ -22,4 +22,8 @@
 
 ## 正式部署
 
-Pages Git integration、production main 與自訂網域／DNS 已設定。公開上線驗收尚待執行，不能以本機測試替代。
+初始功能 commit 0b711cf 已由 Git integration 成功部署（deployment 0a0c21c7）。正式首頁與十項工具 200、深層重整、無資源 404、canonical／sitemap、隨機／QR 主要流程、真正 404 已通過公開 smoke test。
+
+HTTP `/clock?source=smoke` → HTTPS 同路徑與 query（301）。控制台設定 Bulk Redirect 清單 pulsetools_canonical／規則 PulseTools canonical domain，僅匹配 pulsetools.pages.dev，301 保留 query／子路徑／路徑尾碼，不包含預覽子網域；实測 `/clock?source=smoke` 正確指向正式網域。預覽 pages.dev 回應含 X-Robots-Tag: noindex。
+
+完整遠端 E2E 曾發現 hydration 前控制項可操作而忽略輸入，已新增原生 disabled fieldset 及啟動提示，並加入延遲載入測試。修正部署後的完整遠端結果待補。

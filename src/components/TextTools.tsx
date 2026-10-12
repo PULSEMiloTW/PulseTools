@@ -1,3 +1,4 @@
+import { Ready } from "./Common";
 import { useState } from "react";
 import { textStyles, convertText } from "../lib/core";
 import { Copy } from "./Common";
@@ -18,7 +19,7 @@ export default function TextTools({
       )
     : textStyles;
   return (
-    <>
+    <Ready>
       <div className="panel">
         <label htmlFor="source-text">
           {instagram ? "自介、暱稱或貼文文字" : "輸入文字"}
@@ -77,6 +78,6 @@ export default function TextTools({
           <a href="/symbols">尋找特殊符號 →</a>
         </div>
       </section>
-    </>
+    </Ready>
   );
 }

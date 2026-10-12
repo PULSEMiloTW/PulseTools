@@ -1,3 +1,4 @@
+import { Ready } from "./Common";
 import { useEffect, useState } from "react";
 import messages from "emojibase-data/zh-hant/messages.json";
 import { symbols, symbolGroups, type SymbolItem } from "../lib/symbols";
@@ -64,7 +65,7 @@ export default function SymbolBrowser({ emoji = false }: { emoji?: boolean }) {
   };
   const output = tone || selected?.text || "";
   return (
-    <>
+    <Ready>
       <div className="browser-controls">
         <label>
           搜尋名稱或關鍵字
@@ -170,6 +171,6 @@ export default function SymbolBrowser({ emoji = false }: { emoji?: boolean }) {
             : "複製的是 Unicode 純文字，部分符號外觀會依字型與裝置而不同。"}
         </p>
       </section>
-    </>
+    </Ready>
   );
 }

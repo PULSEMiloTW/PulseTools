@@ -41,3 +41,7 @@ npm run preview
 main push 觸發自動建置；備援手動部署：`npx wrangler pages deploy dist --project-name pulsetools --branch main`。無 Functions／Workers 後端或 SPA fallback。回滾於 Pages Deployments 選擇先前成功的 production deployment，執行 Rollback；不改寫 Git 歷史。首次部署沒有舊版本可回滾。
 
 正式部署與公開 smoke test 見驗收紀錄，push 本身不表示已上線。
+
+公開驗證：`node scripts/public-smoke.mjs`。完整正式站 E2E 可設定 `PULSETOOLS_TEST_URL=https://tools.pulse-studio.live` 再執行 `npm run test:e2e`，測試只操作自身獨立瀏覽器 context。
+
+pages.dev → 正式站使用帳戶 Bulk Redirect 清單 `pulsetools_canonical`／規則 `PulseTools canonical domain`，301 保留路徑与 query，不包含預覽子網域。沒有使用不支援網域比對的 _redirects 規則。預覽主機以 _headers 設為 noindex。

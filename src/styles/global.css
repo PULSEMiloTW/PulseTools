@@ -31,6 +31,8 @@
 * {
   box-sizing: border-box;
 }
+.interactive-boundary {border:0;margin:0;padding:0;min-width:0;}
+.controls-boundary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 body {
   margin: 0;
   background: var(--bg);

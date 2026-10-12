@@ -8,3 +8,4 @@ test-results/
 .wrangler/
 .git-inspect/
 public/emoji-data.json
+artifacts/

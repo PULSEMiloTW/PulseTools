@@ -1,3 +1,4 @@
+import { Ready } from "./Common";
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { wifiPayload } from "../lib/core";
@@ -88,7 +89,7 @@ export default function QR() {
   }, [revision]);
   const current = result?.revision === revision ? result : null;
   return (
-    <>
+    <Ready>
       <div className="workspace-grid qr-layout">
         <div className="panel">
           <label>
@@ -234,6 +235,6 @@ export default function QR() {
           保留白色留白區並避免遮蓋圖形。實際使用前請用目標手機掃描確認。
         </p>
       </section>
-    </>
+    </Ready>
   );
 }

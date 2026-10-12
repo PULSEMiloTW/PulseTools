@@ -7,9 +7,11 @@
 - [x] 靜態路由、首頁、雙主題與本機資料
 - [x] 共用正確性與十項工具
 - [x] 邏輯、QR 解碼、瀏覽器與 production build 驗證
-- [ ] Git delivery：PULSEMiloTW/PulseTools main
+- [x] Git delivery：PULSEMiloTW/PulseTools main，初始功能 commit 0b711cf
 - [ ] Cloudflare Pages 正式部署及公開驗收
 
 缺少品牌 Logo 原檔，採文字識別。未建立或複製其他專案的 repository。
 
 2026-10-12：已接續目標 repository 的 initial commit。Pages 專案 pulsetools Git integration 已建立；tools CNAME 無既有衝突，經控制台新增。自訂網域／憑證 active；待程式推送與正式 smoke test。
+
+初始功能已成功公開部署，公開 smoke test 通過。正在交付慢速連線 hydration 控制項修正；完成後重跑完整遠端 E2E。pages.dev 專用 301 已設定與驗證。

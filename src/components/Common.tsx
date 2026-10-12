@@ -1,5 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { read, write, remove } from "../lib/storage";
+export function Ready({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  return (
+    <>
+      <fieldset className="interactive-boundary" disabled={!ready}>
+        {children}
+      </fieldset>
+      {!ready && <p role="status">正在啟動工具…</p>}
+    </>
+  );
+}
 export function Copy({
   text,
   label = "複製",
@@ -72,7 +84,10 @@ export function ListInput({
   const update = (v: string) => {
     onChange(v);
   };
-  useEffect(()=>{if(save&&!write('list:'+storageKey,value))setError('無法保存，名單仍可在本次頁面使用。');},[save,value,storageKey]);
+  useEffect(() => {
+    if (save && !write("list:" + storageKey, value))
+      setError("無法保存，名單仍可在本次頁面使用。");
+  }, [save, value, storageKey]);
   return (
     <div className="list-input">
       <label htmlFor="names">名單（每行一項）</label>

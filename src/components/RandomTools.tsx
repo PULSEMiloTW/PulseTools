@@ -1,3 +1,4 @@
+import { Ready } from "./Common";
 import { useEffect, useRef, useState } from "react";
 import {
   parseList,
@@ -32,14 +33,14 @@ export default function RandomTools({ kind }: { kind: string }) {
   const reduced = useReducedMotion(),
     lock = useRef(false),
     timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [spunTickets,setSpunTickets]=useState<Ticket[]|null>(null);
+  const [spunTickets, setSpunTickets] = useState<Ticket[] | null>(null);
   useEffect(() => () => clearTimeout(timer.current), []);
   const max = kind === "groups" ? 1000 : kind === "draw" ? 200 : 100;
   let tickets: Ticket[] = [];
   try {
     tickets = parseList(text, max);
   } catch {}
-  const displayTickets=spunTickets??tickets;
+  const displayTickets = spunTickets ?? tickets;
   const run = (action: () => void) => {
     try {
       setError("");
@@ -147,7 +148,7 @@ export default function RandomTools({ kind }: { kind: string }) {
     "#25634e",
   ];
   return (
-    <>
+    <Ready>
       <div className="workspace-grid">
         <div className="panel">
           <ListInput
@@ -397,6 +398,6 @@ export default function RandomTools({ kind }: { kind: string }) {
         </p>
         <p className="muted">適合本機一般用途；沒有公證或第三方驗證功能。</p>
       </section>
-    </>
+    </Ready>
   );
 }

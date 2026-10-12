@@ -11,12 +11,39 @@ const routes = [
   "instagram-fonts",
   "qr-code",
 ];
+test("slow script loading keeps controls disabled and keyboard focus visible", async ({
+  page,
+}) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/*.js", async (route) => {
+    await gate;
+    await route.continue();
+  });
+  await page.goto("/", { waitUntil: "commit" });
+  const input = page.getByRole("searchbox", { name: "搜尋工具" });
+  await expect(input).toBeVisible();
+  await expect(input).toBeDisabled();
+  release();
+  await expect(input).toBeEnabled();
+  await input.fill("wifi");
+  await expect(page.locator(".tool-card")).toHaveCount(1);
+  await page.goto("/");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "跳至主要內容" })).toBeFocused();
+  const outline = await page
+    .getByRole("link", { name: "跳至主要內容" })
+    .evaluate((e) => getComputedStyle(e).outlineStyle);
+  expect(outline).not.toBe("none");
+});
 test("all routes reload, canonical, themes, 320px layout and clean console", async ({
   page,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+  page.on("response", (r) => {
+    if (r.status() >= 400) errors.push(`${r.status()} ${r.url()}`);
+  });
   page.on("console", (m) => {
     if (m.type() === "error") errors.push(m.text());
   });
@@ -67,7 +94,9 @@ test("home search category favorite recent and clear scoped storage", async ({
     .first()
     .click();
   await page.goto("/clock");
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('pulsetools:recent'))).toContain('clock');
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("pulsetools:recent")))
+    .toContain("clock");
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "我的收藏" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "最近使用" })).toBeVisible();

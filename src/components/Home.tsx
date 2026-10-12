@@ -1,3 +1,4 @@
+import { Ready } from "./Common";
 import { useEffect, useState } from "react";
 import { tools, categories } from "../lib/tools";
 import { stringList, write } from "../lib/storage";
@@ -60,7 +61,7 @@ export default function Home() {
         .includes(query.toLowerCase()),
   );
   return (
-    <>
+    <Ready>
       <div className="home-title">
         <h1>日常小事，順手完成。</h1>
         <p>十個實用工具，打開就能用。免登入，內容在你的瀏覽器處理。</p>
@@ -125,6 +126,6 @@ export default function Home() {
         {cards(visible)}
         {!visible.length && <p>找不到符合的工具，試試其他關鍵字或分類。</p>}
       </section>
-    </>
+    </Ready>
   );
 }
