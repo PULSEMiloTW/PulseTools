@@ -8,14 +8,14 @@
 
 | 文件 | 內容 |
 | --- | --- |
-| [01-BRAND.md](01-BRAND.md) | 品牌方向、識別、視覺語言與素材 |
-| [02-COLOR-TOKENS.md](02-COLOR-TOKENS.md) | 色彩、雙主題與可複製 CSS Token 範本 |
-| [03-TYPOGRAPHY.md](03-TYPOGRAPHY.md) | 字型、字級、行高、中英混排與文字層級 |
-| [04-LAYOUT.md](04-LAYOUT.md) | 間距、容器、網格、響應式與資訊結構 |
-| [05-COMPONENTS.md](05-COMPONENTS.md) | 按鈕、表單、卡片、表格、導覽與對話框 |
-| [06-INTERACTION-CONTENT.md](06-INTERACTION-CONTENT.md) | 動效、操作回饋、多語系與介面文案 |
-| [07-QUALITY-CHECKLIST.md](07-QUALITY-CHECKLIST.md) | 設計與瀏覽器驗收清單 |
-| [08-PROJECT-STARTER.md](08-PROJECT-STARTER.md) | 新專案設定表、設計提示詞與代理規範片段 |
+| [01-BRAND.md](../01-BRAND.md) | 品牌方向、識別、視覺語言與素材 |
+| [02-COLOR-TOKENS.md](../02-COLOR-TOKENS.md) | 色彩、雙主題與可複製 CSS Token 範本 |
+| [03-TYPOGRAPHY.md](../03-TYPOGRAPHY.md) | 字型、字級、行高、中英混排與文字層級 |
+| [04-LAYOUT.md](../04-LAYOUT.md) | 間距、容器、網格、響應式與資訊結構 |
+| [05-COMPONENTS.md](../05-COMPONENTS.md) | 按鈕、表單、卡片、表格、導覽與對話框 |
+| [06-INTERACTION-CONTENT.md](../06-INTERACTION-CONTENT.md) | 動效、操作回饋、多語系與介面文案 |
+| [07-QUALITY-CHECKLIST.md](../07-QUALITY-CHECKLIST.md) | 設計與瀏覽器驗收清單 |
+| [08-PROJECT-STARTER.md](../08-PROJECT-STARTER.md) | 新專案設定表、設計提示詞與代理規範片段 |
 
 ## 直接沿用的方式
 

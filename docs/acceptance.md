@@ -26,4 +26,6 @@
 
 HTTP `/clock?source=smoke` → HTTPS 同路徑與 query（301）。控制台設定 Bulk Redirect 清單 pulsetools_canonical／規則 PulseTools canonical domain，僅匹配 pulsetools.pages.dev，301 保留 query／子路徑／路徑尾碼，不包含預覽子網域；实測 `/clock?source=smoke` 正確指向正式網域。預覽 pages.dev 回應含 X-Robots-Tag: noindex。
 
-完整遠端 E2E 曾發現 hydration 前控制項可操作而忽略輸入，已新增原生 disabled fieldset 及啟動提示，並加入延遲載入測試。修正部署後的完整遠端結果待補。
+完整遠端 E2E 曾發現 hydration 前控制項可操作而忽略輸入，已新增原生 disabled fieldset 及啟動提示，並加入延遲載入測試。
+
+修正 commit a5c8850，Pages deployment 9548072a 成功。設定 PULSETOOLS_TEST_URL=https://tools.pulse-studio.live 的完整 E2E：8 passed（38.2s）。再執行 `node scripts/public-smoke.mjs`：PUBLIC SMOKE PASSED。HTTP 與 pages.dev 均 301 至 HTTPS 正式網域，路徑／query 正確保留。公開無 Access 登入要求，安全標頭未阻擋剪貼簿與全螢幕。PNG QR、轉盤與首頁桌面／320px 截圖保留於本機 artifacts/，不提交生成圖片。
