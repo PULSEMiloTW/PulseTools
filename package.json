@@ -1,0 +1,40 @@
+{
+  "name": "pulsetools-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1",
+    "build": "astro build",
+    "preview": "astro preview --host 127.0.0.1",
+    "typecheck": "astro check",
+    "test": "tsx --test tests/core.test.ts",
+    "test:e2e": "playwright test",
+    "predev": "node scripts/emoji-data.mjs",
+    "prebuild": "node scripts/emoji-data.mjs"
+  },
+  "dependencies": {
+    "@astrojs/react": "^7.0.1",
+    "astro": "^7.3.8",
+    "emojibase-data": "^17.0.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@playwright/test": "^1.64.0",
+    "@types/pngjs": "^6.0.5",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "jsqr": "^1.4.0",
+    "pngjs": "^7.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.149.0"
+  }
+}

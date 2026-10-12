@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.astro/
+.env
+.env.*
+playwright-report/
+test-results/
+.wrangler/
+.git-inspect/
+public/emoji-data.json

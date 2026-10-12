@@ -1,0 +1,20 @@
+---
+import Layout from '../layouts/Layout.astro';
+import {tools} from '../lib/tools';
+import Clock from '../components/Clock';
+import RandomTools from '../components/RandomTools';
+import Coin from '../components/Coin';
+import SymbolBrowser from '../components/SymbolBrowser';
+import TextTools from '../components/TextTools';
+import QR from '../components/QR';
+export function getStaticPaths(){return tools.map(tool=>({params:{tool:tool.slug},props:{tool}}));}
+const {tool}=Astro.props;
+---
+<Layout title={tool.name} description={tool.description} slug={tool.slug}>
+{tool.slug==='clock'&&<Clock client:load/>}
+{['wheel','groups','draw'].includes(tool.slug)&&<RandomTools kind={tool.slug} client:load/>}
+{tool.slug==='coin'&&<Coin client:load/>}
+{['emoji','symbols'].includes(tool.slug)&&<SymbolBrowser emoji={tool.slug==='emoji'} client:load/>}
+{['cool-text','instagram-fonts'].includes(tool.slug)&&<TextTools instagram={tool.slug==='instagram-fonts'} client:load/>}
+{tool.slug==='qr-code'&&<QR client:load/>}
+</Layout>
